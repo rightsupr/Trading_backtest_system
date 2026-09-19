@@ -6,8 +6,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.routes import router
+from app.api.strategy_routes import router as strategy_router
 from app.config import settings
 from app.data.base import AdjustmentChanged, ProviderError
 from app.database.repository import Repository
@@ -25,6 +27,25 @@ def create_app(database_path: Path | None = None, providers=None) -> FastAPI:
         yield
 
     app = FastAPI(title="Local Stock Research", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]", "testserver"])
+
+    @app.middleware("http")
+    async def local_origin_only(request: Request, call_next):
+        origin = request.headers.get("origin")
+        if (
+            request.method == "POST"
+            and origin
+            and origin
+            not in {
+                f"http://localhost:{settings.frontend_port}",
+                f"http://127.0.0.1:{settings.frontend_port}",
+                f"http://localhost:{settings.api_port}",
+                f"http://127.0.0.1:{settings.api_port}",
+            }
+        ):
+            return JSONResponse(status_code=403, content={"detail": "仅允许本地研究工作台发起操作"})
+        return await call_next(request)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -55,6 +76,7 @@ def create_app(database_path: Path | None = None, providers=None) -> FastAPI:
         return JSONResponse(status_code=500, content={"detail": "服务器处理失败，请查看后端日志后重试"})
 
     app.include_router(router)
+    app.include_router(strategy_router)
     return app
 
 

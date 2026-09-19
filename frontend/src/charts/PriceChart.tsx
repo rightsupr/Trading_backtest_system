@@ -114,7 +114,7 @@ export default function PriceChart({
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const isMA = run?.request.strategy_name === "ma_cross";
+    const isMA = !run?.request.custom_strategy && run?.request.strategy_name === "ma_cross";
     fast.setData(
       bars.map((b) => {
         const v = isMA ? b.strategy_fast : b.sma_5;
@@ -333,13 +333,13 @@ export default function PriceChart({
         )}
         <span className="legend-fast">
           MA{" "}
-          {run?.request.strategy_name === "ma_cross"
+          {!run?.request.custom_strategy && run?.request.strategy_name === "ma_cross"
             ? run.request.parameters.fast_ma
             : 5}
         </span>
         <span className="legend-slow">
           MA{" "}
-          {run?.request.strategy_name === "ma_cross"
+          {!run?.request.custom_strategy && run?.request.strategy_name === "ma_cross"
             ? run.request.parameters.slow_ma
             : 20}
         </span>
@@ -377,7 +377,7 @@ export default function PriceChart({
         style={{ top: paneHeight + volumeHeight + 44 }}
       >
         MACD <i>DIF</i> <em>DEA</em> ·{" "}
-        {run?.request.strategy_name === "macd"
+        {!run?.request.custom_strategy && run?.request.strategy_name === "macd"
           ? Object.values(run.request.parameters).join(" / ")
           : "12 / 26 / 9"}
       </span>

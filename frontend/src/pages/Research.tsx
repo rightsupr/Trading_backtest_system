@@ -16,6 +16,9 @@ import PriceChart from "../charts/PriceChart";
 import EquityChart from "../charts/EquityChart";
 import Metrics from "../components/Metrics";
 import TradeTable from "../components/TradeTable";
+import StrategyWorkbench from "../components/StrategyWorkbench";
+import { defaultRules, defaultPython, readDraft } from "../types/strategy";
+import type { StrategyDefinition, StrategyMode } from "../types/strategy";
 import { api, money, percent } from "../services/api";
 import type {
   Bar,
@@ -71,6 +74,24 @@ export default function Research() {
   const [notice, setNotice] = useState("准备就绪 · 选择数据范围，开始你的研究");
   const [advanced, setAdvanced] = useState(false);
   const [online, setOnline] = useState(false);
+  const [mode, setMode] = useState<StrategyMode>("builtin");
+  const [ruleDraft, setRuleDraft] = useState(() =>
+    readDraft("quant.rules.v1", defaultRules),
+  );
+  const [pythonDraft, setPythonDraft] = useState(() =>
+    readDraft("quant.python.v1", defaultPython),
+  );
+  const [editorKey, setEditorKey] = useState(0);
+  const custom =
+    mode === "rules" ? ruleDraft : mode === "python" ? pythonDraft : null;
+  useEffect(() => {
+    try {
+      localStorage.setItem("quant.rules.v1", JSON.stringify(ruleDraft));
+      localStorage.setItem("quant.python.v1", JSON.stringify(pythonDraft));
+    } catch {
+      setError("浏览器草稿存储不可用，请使用「保存策略」保存到本地数据库");
+    }
+  }, [ruleDraft, pythonDraft]);
 
   useEffect(() => {
     Promise.all([
@@ -142,6 +163,7 @@ export default function Research() {
         strategy_name: strategy,
         parameters,
         config,
+        custom_strategy: custom,
       });
       setRun(result);
       setSelected(null);
@@ -161,8 +183,16 @@ export default function Research() {
         source: r.source,
         adjust: r.adjust,
       });
-      setStrategy(r.strategy_name);
-      setParameters(r.parameters);
+      if (r.custom_strategy) {
+        setMode(r.custom_strategy.kind);
+        if (r.custom_strategy.kind === "rules") setRuleDraft(r.custom_strategy);
+        else setPythonDraft(r.custom_strategy);
+      } else {
+        setMode("builtin");
+        setStrategy(r.strategy_name);
+        setParameters(r.parameters);
+      }
+      setEditorKey((key) => key + 1);
       setConfig(r.config);
       setRun(result);
       setBars(result.bars);
@@ -185,6 +215,11 @@ export default function Research() {
     );
   };
   const chartBars = run?.bars ?? bars;
+  const editCustom = (definition: StrategyDefinition) => {
+    if (definition.kind === "rules") setRuleDraft(definition);
+    else setPythonDraft(definition);
+    clearRun();
+  };
   const chooseTrade = (trade: Trade) => {
     setSelected({ ...trade });
     setFill(null);
@@ -322,48 +357,78 @@ export default function Research() {
                 <FlaskConical size={17} />
                 策略配置
               </span>
-              <label className="inline-label">
-                <select
-                  aria-label="策略"
-                  value={strategy}
-                  onChange={(e) => changeStrategy(e.target.value)}
-                >
-                  {strategies.length ? (
-                    strategies.map((s) => (
-                      <option key={s.name} value={s.name}>
-                        {s.label}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="ma_cross">均线金叉</option>
-                  )}
-                </select>
-              </label>
-              {Object.entries(parameters).map(([key, value]) => (
-                <label className="parameter" key={key}>
-                  {key}
-                  <input
-                    aria-label={key}
-                    type="number"
-                    min={
-                      currentStrategy?.parameters.properties[key]?.minimum ?? 1
-                    }
-                    max={
-                      currentStrategy?.parameters.properties[key]?.maximum ??
-                      500
-                    }
-                    step="1"
-                    value={value}
-                    onChange={(e) => {
-                      setParameters({
-                        ...parameters,
-                        [key]: Number(e.target.value),
-                      });
+              <div
+                className="strategy-mode"
+                role="group"
+                aria-label="策略创建方式"
+              >
+                {(
+                  [
+                    ["builtin", "内置策略"],
+                    ["rules", "规则编辑器"],
+                    ["python", "Python 编辑器"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    aria-pressed={mode === key}
+                    className={mode === key ? "active" : ""}
+                    onClick={() => {
+                      setMode(key);
                       clearRun();
                     }}
-                  />
-                </label>
-              ))}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {mode === "builtin" && (
+                <>
+                  <label className="inline-label">
+                    <select
+                      aria-label="策略"
+                      value={strategy}
+                      onChange={(e) => changeStrategy(e.target.value)}
+                    >
+                      {strategies.length ? (
+                        strategies.map((s) => (
+                          <option key={s.name} value={s.name}>
+                            {s.label}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="ma_cross">均线金叉</option>
+                      )}
+                    </select>
+                  </label>
+                  {Object.entries(parameters).map(([key, value]) => (
+                    <label className="parameter" key={key}>
+                      {key}
+                      <input
+                        aria-label={key}
+                        type="number"
+                        min={
+                          currentStrategy?.parameters.properties[key]
+                            ?.minimum ?? 1
+                        }
+                        max={
+                          currentStrategy?.parameters.properties[key]
+                            ?.maximum ?? 500
+                        }
+                        step="1"
+                        value={value}
+                        onChange={(e) => {
+                          setParameters({
+                            ...parameters,
+                            [key]: Number(e.target.value),
+                          });
+                          clearRun();
+                        }}
+                      />
+                    </label>
+                  ))}
+                </>
+              )}
               <button
                 className={`text-button settings-toggle ${advanced ? "active" : ""}`}
                 onClick={() => setAdvanced(!advanced)}
@@ -377,12 +442,54 @@ export default function Research() {
               <button
                 className="primary run-button"
                 onClick={execute}
-                disabled={!chartBars.length || !!busy}
+                disabled={
+                  !chartBars.length ||
+                  !!busy ||
+                  (mode === "python" && !pythonDraft.code.trim())
+                }
               >
                 <Play size={15} fill="currentColor" />
                 运行回测
               </button>
             </div>
+            {mode === "builtin" && (
+              <div className="builtin-explanation">
+                {strategy === "ma_cross" ? (
+                  <>
+                    <strong>均线金叉：跟随短期与长期趋势变化</strong>
+                    <p>
+                      最近 {parameters.fast_ma} 日收盘均价从下方穿过最近{" "}
+                      {parameters.slow_ma}{" "}
+                      日均价时买入；从上方穿过时卖出。fast_ma
+                      是短均线周期，slow_ma 是长均线周期。没有额外止盈止损。
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <strong>MACD 基础策略：跟随动量交叉</strong>
+                    <p>
+                      DIF = EMA({parameters.fast}) − EMA({parameters.slow})，DEA
+                      = DIF 的 EMA({parameters.signal})。DIF 上穿 DEA
+                      买入，下穿卖出；不限制零轴位置，没有额外止盈止损。
+                    </p>
+                  </>
+                )}
+                <span>
+                  上穿要求昨日在下方或相等、今日在上方；所有信号收盘确认，下一交易日开盘执行。
+                </span>
+              </div>
+            )}
+            {custom && (
+              <StrategyWorkbench
+                key={`${mode}-${editorKey}`}
+                value={custom}
+                onChange={editCustom}
+                query={query}
+                config={config}
+                hasBars={!!chartBars.length}
+                disabled={!!busy}
+              />
+            )}
             {advanced && (
               <div className="advanced-settings">
                 {Object.entries(config)
@@ -520,7 +627,7 @@ export default function Research() {
             </strong>
             <span>成交价 ¥{fill.price.toFixed(3)}</span>
             <span>
-              {currentStrategy?.label} · {fill.reason}
+              {custom?.name ?? currentStrategy?.label} · {fill.reason}
             </span>
             <span>信号日 {fill.signal_date}</span>
           </div>

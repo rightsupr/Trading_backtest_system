@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from threading import RLock
+from uuid import uuid4
 
 import duckdb
 import pandas as pd
@@ -166,3 +167,67 @@ class Repository:
                 "ORDER BY created_at DESC LIMIT 100"
             ).fetchall()
         return [dict(zip(["run_id", "symbol", "strategy_name", "created_at"], map(str, row))) for row in rows]
+
+    def save_definition(self, definition: dict, content_hash: str, parent_id: str | None = None) -> dict:
+        identifier = str(uuid4())
+        with self.connection() as conn:
+            family, revision = identifier, 1
+            if parent_id:
+                parent = conn.execute(
+                    "SELECT family_id FROM strategy_definitions WHERE definition_id=?", [parent_id]
+                ).fetchone()
+                if parent is None:
+                    raise ValueError("原策略版本不存在，请另存为新策略")
+                family = parent[0]
+                revision = conn.execute(
+                    "SELECT max(revision)+1 FROM strategy_definitions WHERE family_id=?", [family]
+                ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO strategy_definitions VALUES (?, ?, ?, ?, ?, ?, ?, current_timestamp)",
+                [
+                    identifier,
+                    family,
+                    revision,
+                    definition["name"],
+                    definition["kind"],
+                    json.dumps(definition),
+                    content_hash,
+                ],
+            )
+        return self.get_definition(identifier)
+
+    def get_definition(self, identifier: str) -> dict | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT definition_id, family_id, revision, definition_json, content_hash, created_at "
+                "FROM strategy_definitions WHERE definition_id=?",
+                [identifier],
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "definition_id": row[0],
+            "family_id": row[1],
+            "revision": row[2],
+            "definition": json.loads(row[3]),
+            "content_hash": row[4],
+            "created_at": str(row[5]),
+        }
+
+    def list_definitions(self) -> list[dict]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT definition_id, family_id, revision, name, kind, created_at "
+                "FROM strategy_definitions ORDER BY created_at DESC"
+            ).fetchall()
+        return [
+            {
+                "definition_id": r[0],
+                "family_id": r[1],
+                "revision": r[2],
+                "name": r[3],
+                "kind": r[4],
+                "created_at": str(r[5]),
+            }
+            for r in rows
+        ]

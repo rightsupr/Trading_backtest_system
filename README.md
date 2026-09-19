@@ -159,6 +159,59 @@ curl -X POST http://localhost:8000/api/backtest \
 
 ## 添加策略或指标
 
+现在可以直接在「策略配置」选择 **规则编辑器** 或 **Python 编辑器** 创建自己的策略，不必修改项目文件。内置 MA/MACD 仍保留，并显示中文买卖原理。
+
+### 使用规则编辑器
+
+1. 先下载或读取本地行情，切换到「规则编辑器」。
+2. 填写名称与说明；分别编辑买入、卖出条件。每组支持「全部满足 AND」或「任意满足 OR」。
+3. 两侧可选择 OHLC、成交量、SMA/EMA/成交量均线、MACD、RSI、ATR、BOLL、KDJ 或固定数值；选择比较、上穿或下穿。
+4. SMA/EMA/成交量均线周期可修改。其它指标采用页面标注的标准参数（MACD 12/26/9、RSI/ATR 14、BOLL 20/2、KDJ 9）。
+5. 「斜率 N」为 `(当前值 - N 根前的值) / N`，0 表示不计算斜率；「前移几根」为历史偏移（1=昨天）；「连续根数」要求条件连续成立。不能使用负偏移。
+6. 点击「校验策略与信号」查看 BUY/SELL 数量和前 5 个信号原因；校验不会创建回测记录。再点击「运行回测」，沿用原来的交易复盘流程。
+
+例如“零轴下 DIF 拐头”买入组可设置全部满足：`DIF < 0`、`DIF 的 1 日斜率前移 1 根 ≤ 0`、`DIF 的 1 日斜率 > 0.05`。卖出组选择任意满足：`DIF 下穿 DEA` 或 `DIF 的 1 日斜率 < -0.05`。斜率单位为价格/交易日，0.05 不是百分比。
+
+规则采用卖出优先；空仓时如果卖出组成立，即使买入组同时成立也不入场。已有目标仓位时不重复买入。当前编辑器不支持嵌套条件、真实成交后的持仓天数或持仓最高价止损。
+
+### 使用 Python 编辑器
+
+1. 切换到「Python 编辑器」，点击载入「均线金叉」或「DIF 斜率拐头」示例（会替换当前编辑区）。
+2. 修改买入/卖出条件或下面的数值参数；可以回车新增参数名称。示例代码保留了输出结构，不需继承类或修改系统目录。
+3. 点击「校验策略与信号」；语法、运行错误会显示代码行号，错误的日期/信号/仓位/原因字段也会被拒绝。
+4. 校验通过后保存并回测。直接回测也会执行同样的检查。
+
+固定接口：
+
+```python
+def generate_signals(data, params):
+    # data: 已按日期排序的 Pandas DataFrame，包括 OHLCV 和标准图表指标
+    # params: 编辑区配置的数值参数字典
+    # 返回 DataFrame，必须与 data 日期、行数一一对应：
+    # date / signal / position_target / reason
+    # signal = BUY / SELL / HOLD / NONE
+    # position_target = 0 或 1，reason 为非空字符串
+    ...
+```
+
+完整可运行代码见界面示例或 `backend/app/strategies/templates.py`。可以导入 `app.indicators.technical` 的指标函数以及已安装的 Pandas/NumPy。未成熟指标为 NaN，应返回 NONE 而不是删除这些日期。HOLD 对应目标仓位 1，NONE 对应 0。目标仓位不等于已撮合持仓：资金不足/停牌可能导致信号未成交。
+
+Python 在临时工作目录中的独立进程执行，总超时 15 秒（含校验），不会把代码拼接成 shell 命令。保存版本只检查语法与入口，不执行代码。执行时会抽查中点及末日前的两段历史前缀，若信号/原因随未来数据改变则拒绝；这能发现常见未来函数或随机状态问题，不构成对任意 Python 的严格证明。自定义代码只返回信号，图表仍使用标准图表指标。
+
+**这是可信本机代码入口，不是安全沙箱**：代码拥有当前用户的文件与网络权限，只运行自己信任的代码，不要将该服务暴露到公网。API 限制本地主机名与浏览器来源；子进程/超时主要用于隔离策略错误和死循环。
+
+### 草稿、保存与历史版本
+
+- 两个编辑器草稿独立，自动保存在当前浏览器的 localStorage；不同浏览器或端口不共享草稿。
+- 「保存策略」写入 DuckDB 的 `strategy_definitions`；之后「保存新版本」追加 V2/V3，不覆盖旧版本。「另存为新策略」创建新系列。
+- 「载入我的策略版本」可以恢复各个版本。只保存并不意味着策略已通过行情校验。
+- 每次回测都嵌入完整规则或 Python 源码、参数、说明和内容 SHA-256。右上角历史回测恢复当次编辑内容；后续编辑不会改动已有结果。由回测快照恢复的内容可另存为策略；若要延续已有版本系列，请从策略版本列表加载。
+- 自定义策略的 `strategy_version` 为完整定义的 SHA-256，内置策略仍使用语义版本。
+
+新增 API：`GET /api/strategy-editor/examples`、`GET/POST /api/strategy-editor/definitions`、`GET /api/strategy-editor/definitions/{id}`、`POST /api/strategy-editor/validate`。原 `POST /api/backtest` 增加可选 `custom_strategy`（kind=rules/python）；不传此字段时保持内置策略行为。
+
+### 扩展系统级插件
+
 1. 在 `backend/app/strategies/` 新建类，继承 `BaseStrategy`，指定唯一 name、label、version、Pydantic parameter_model。
 2. `prepare(data, params)` 通过独立指标模块增加需要的列。
 3. `generate_signals(data, params)` 返回与行情日期逐行对齐的 DataFrame，包含 `date, signal, position_target, reason`。第一版 position_target 仅 0/1，BUY/SELL 是执行指令，HOLD/NONE 不创建新订单。

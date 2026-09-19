@@ -1,17 +1,15 @@
 from datetime import date
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
 from app.config import settings
+from app.models.schemas_base import StrictModel
+from app.models.strategy import StrategyDefinition
 
 Adjust = Literal["raw", "qfq", "hfq"]
 Source = Literal["eastmoney", "tencent", "sample"]
 Symbol = Annotated[str, Field(pattern=r"^\d{6}$")]
-
-
-class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class DataRequest(StrictModel):
@@ -45,3 +43,4 @@ class BacktestRequest(DataRequest):
     strategy_name: str = "ma_cross"
     parameters: dict[str, int | float] = Field(default_factory=dict)
     config: BacktestConfig = Field(default_factory=BacktestConfig)
+    custom_strategy: StrategyDefinition | None = None

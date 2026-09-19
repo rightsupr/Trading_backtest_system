@@ -1,3 +1,4 @@
+import type { StrategyDefinition } from "./strategy";
 export interface Query {
   symbol: string;
   start_date: string;
@@ -76,6 +77,7 @@ export interface Run {
     strategy_name: string;
     parameters: Record<string, number>;
     config: Config;
+    custom_strategy?: StrategyDefinition | null;
   };
   bars: Bar[];
   trades: Trade[];

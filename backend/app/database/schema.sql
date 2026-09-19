@@ -27,3 +27,9 @@ CREATE TABLE IF NOT EXISTS equity_curve (
     run_id VARCHAR, date DATE, cash DOUBLE, position_value DOUBLE, total_equity DOUBLE, drawdown DOUBLE,
     PRIMARY KEY(run_id, date)
 );
+CREATE TABLE IF NOT EXISTS strategy_definitions (
+    definition_id VARCHAR PRIMARY KEY, family_id VARCHAR NOT NULL, revision INTEGER NOT NULL,
+    name VARCHAR NOT NULL, kind VARCHAR NOT NULL, definition_json JSON NOT NULL,
+    content_hash VARCHAR NOT NULL, created_at TIMESTAMP DEFAULT current_timestamp,
+    UNIQUE(family_id, revision)
+);
