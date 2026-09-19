@@ -1,0 +1,29 @@
+CREATE TABLE IF NOT EXISTS stocks (
+    symbol VARCHAR PRIMARY KEY, name VARCHAR, updated_at TIMESTAMP DEFAULT current_timestamp
+);
+CREATE TABLE IF NOT EXISTS daily_bars (
+    symbol VARCHAR NOT NULL, date DATE NOT NULL,
+    open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume DOUBLE,
+    amount DOUBLE, turnover DOUBLE, pre_close DOUBLE, change DOUBLE, pct_change DOUBLE,
+    adjust_type VARCHAR NOT NULL, data_source VARCHAR NOT NULL,
+    updated_at TIMESTAMP DEFAULT current_timestamp,
+    PRIMARY KEY (symbol, date, adjust_type, data_source)
+);
+CREATE TABLE IF NOT EXISTS strategy_runs (
+    run_id VARCHAR PRIMARY KEY, symbol VARCHAR, strategy_name VARCHAR, strategy_version VARCHAR,
+    parameters_json JSON, start_date DATE, end_date DATE, initial_cash DOUBLE,
+    created_at TIMESTAMP DEFAULT current_timestamp, result_json JSON
+);
+CREATE TABLE IF NOT EXISTS signals (
+    run_id VARCHAR, date DATE, signal VARCHAR, position_target DOUBLE, reason VARCHAR,
+    PRIMARY KEY(run_id, date)
+);
+CREATE TABLE IF NOT EXISTS trades (
+    trade_id VARCHAR PRIMARY KEY, run_id VARCHAR, symbol VARCHAR,
+    entry_date DATE, exit_date DATE, entry_price DOUBLE, exit_price DOUBLE,
+    shares INTEGER, profit DOUBLE, payload JSON
+);
+CREATE TABLE IF NOT EXISTS equity_curve (
+    run_id VARCHAR, date DATE, cash DOUBLE, position_value DOUBLE, total_equity DOUBLE, drawdown DOUBLE,
+    PRIMARY KEY(run_id, date)
+);

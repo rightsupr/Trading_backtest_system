@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.egg-info/
+.ruff_cache/
+.env
+data/*
+!data/.gitkeep
+node_modules/
+frontend/dist/
+output/
+.playwright-cli/
+*.tsbuildinfo
+.DS_Store
