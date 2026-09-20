@@ -1408,3 +1408,222 @@ tbody tr.selected td {
     padding: 14px;
   }
 }
+
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.experiment-dialog {
+  width: min(1080px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 26px;
+  border: 1px solid #dce2e9;
+  border-radius: 14px;
+  color: #243143;
+  box-shadow: 0 24px 100px #122b3440;
+}
+.experiment-dialog::backdrop {
+  background: #14283580;
+  backdrop-filter: blur(3px);
+}
+.experiment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.experiment-header h2 {
+  font-size: 23px;
+  margin: 7px 0;
+}
+.experiment-header p,
+.storage-note {
+  color: #728094;
+  line-height: 1.8;
+}
+.storage-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr 1fr;
+  gap: 12px;
+}
+.storage-grid > div {
+  padding: 18px;
+  background: #f4f7f8;
+  border: 1px solid #e8edef;
+  border-radius: 8px;
+}
+.storage-grid span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #657588;
+}
+.storage-grid strong {
+  display: block;
+  font-size: 26px;
+  margin: 10px 0;
+  color: #167d6a;
+  font-variant-numeric: tabular-nums;
+}
+.storage-grid em {
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 400;
+}
+.storage-grid small {
+  color: #758292;
+}
+.storage-note {
+  font-size: 12px;
+  margin: 12px 0 20px;
+}
+.experiment-toolbar,
+.experiment-pagination,
+.experiment-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.experiment-toolbar {
+  flex-wrap: wrap;
+  margin: 18px 0 12px;
+}
+.experiment-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.experiment-toolbar > span {
+  margin-right: auto;
+  color: #7b8795;
+  font-size: 12px;
+}
+.experiment-dialog input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #178770;
+  cursor: pointer;
+}
+.experiment-dialog input:disabled {
+  cursor: not-allowed;
+}
+.experiment-table-wrap {
+  overflow-x: auto;
+}
+.experiment-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  white-space: nowrap;
+}
+.experiment-table th {
+  background: #f4f6f8;
+  font-weight: 500;
+  color: #6b798b;
+}
+.experiment-table th,
+.experiment-table td {
+  padding: 12px 9px;
+  border-bottom: 1px solid #edf0f3;
+}
+.experiment-table strong {
+  display: block;
+  max-width: 250px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.experiment-table small {
+  display: block;
+  color: #7d8898;
+  margin-top: 5px;
+  font-size: 11px;
+}
+.favorite-button {
+  padding: 6px;
+  border-color: transparent;
+}
+.favorite-button.active {
+  color: #b78722;
+  background: #fff7e5;
+}
+.danger-button {
+  color: #b84343;
+}
+.experiment-pagination {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+.experiment-pagination span {
+  margin-right: auto;
+  color: #758292;
+}
+.experiment-empty {
+  text-align: center;
+  color: #758292;
+  padding: 36px 12px;
+}
+.experiment-notice,
+.experiment-error {
+  padding: 12px;
+  border-radius: 6px;
+  margin: 12px 0;
+  line-height: 1.7;
+}
+.experiment-notice {
+  background: #edf8f2;
+  color: #24795d;
+}
+.experiment-error {
+  background: #fff0f0;
+  color: #a33d3d;
+}
+.delete-confirm {
+  background: #fff9f7;
+  border: 1px solid #eed9d3;
+  padding: 20px;
+  border-radius: 8px;
+}
+.delete-confirm h3 {
+  color: #a33d3d;
+  margin-bottom: 12px;
+}
+.delete-confirm p {
+  line-height: 1.9;
+}
+.delete-confirm ul {
+  max-height: 240px;
+  overflow: auto;
+  padding-left: 20px;
+  line-height: 2;
+}
+.delete-confirm .experiment-actions {
+  justify-content: flex-end;
+}
+@media (max-width: 700px) {
+  .experiment-dialog {
+    padding: 16px;
+  }
+  .storage-grid {
+    grid-template-columns: 1fr;
+  }
+  .storage-grid > div {
+    padding: 12px;
+  }
+  .storage-grid strong {
+    font-size: 22px;
+    margin: 6px 0;
+  }
+}
+.experiment-toolbar label {
+  flex-direction: row;
+}
+.experiment-table th,
+.experiment-table td {
+  text-align: left;
+}
+.experiment-table tbody tr {
+  cursor: default;
+}

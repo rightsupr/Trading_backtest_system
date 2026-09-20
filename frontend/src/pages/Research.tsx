@@ -16,6 +16,7 @@ import PriceChart from "../charts/PriceChart";
 import EquityChart from "../charts/EquityChart";
 import Metrics from "../components/Metrics";
 import TradeTable from "../components/TradeTable";
+import ExperimentManager from "../components/ExperimentManager";
 import StrategyWorkbench from "../components/StrategyWorkbench";
 import { defaultRules, defaultPython, readDraft } from "../types/strategy";
 import type { StrategyDefinition, StrategyMode } from "../types/strategy";
@@ -66,6 +67,7 @@ export default function Research() {
   const [config, setConfig] = useState<Config>(defaultConfig);
   const [bars, setBars] = useState<Bar[]>([]);
   const [run, setRun] = useState<Run | null>(null);
+  const [showExperiments, setShowExperiments] = useState(false);
   const [history, setHistory] = useState<RunSummary[]>([]);
   const [selected, setSelected] = useState<Trade | null>(null);
   const [fill, setFill] = useState<Fill | null>(null);
@@ -260,23 +262,29 @@ export default function Research() {
             <h1>策略研究工作台</h1>
             <p>从行情到信号，从交易到洞察。</p>
           </div>
-          <label className="history-select">
-            <History size={16} />
-            <select
-              aria-label="历史回测"
-              value={run?.run_id ?? ""}
-              onChange={(e) => loadRun(e.target.value)}
-              disabled={!!busy}
-            >
-              <option value="">历史回测记录</option>
-              {history.map((h) => (
-                <option key={h.run_id} value={h.run_id}>
-                  {h.symbol} · {h.strategy_name} · {h.created_at.slice(0, 16)}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={13} />
-          </label>
+          <div className="history-actions">
+            <button disabled={!!busy} onClick={() => setShowExperiments(true)}>
+              <Database size={16} />
+              实验记录管理
+            </button>
+            <label className="history-select">
+              <History size={16} />
+              <select
+                aria-label="历史回测"
+                value={run?.run_id ?? ""}
+                onChange={(e) => loadRun(e.target.value)}
+                disabled={!!busy}
+              >
+                <option value="">历史回测记录</option>
+                {history.map((h) => (
+                  <option key={h.run_id} value={h.run_id}>
+                    {h.symbol} · {h.strategy_name} · {h.created_at.slice(0, 16)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={13} />
+            </label>
+          </div>
         </div>
         <section className="panel controls">
           <fieldset disabled={!!busy}>
@@ -739,6 +747,26 @@ export default function Research() {
           </span>
         </footer>
       </main>
+      {showExperiments && (
+        <ExperimentManager
+          onClose={() => setShowExperiments(false)}
+          onOpen={(id) => {
+            setShowExperiments(false);
+            loadRun(id);
+          }}
+          onDeleted={(ids) => {
+            if (run && ids.includes(run.run_id)) {
+              clearRun();
+              setBars([]);
+              setNotice("当前实验已删除，可重新加载本地行情开始研究");
+            }
+            setHistory((items) => items.filter((h) => !ids.includes(h.run_id)));
+            void api<RunSummary[]>("/backtest")
+              .then(setHistory)
+              .catch((e) => setError(e.message));
+          }}
+        />
+      )}
     </>
   );
 }

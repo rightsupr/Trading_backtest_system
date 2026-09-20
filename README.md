@@ -251,3 +251,16 @@ npm --prefix frontend run build
 
 参考：[AKShare 股票数据文档](https://akshare.akfamily.xyz/data/stock/stock.html)、[Lightweight Charts panes](https://tradingview.github.io/lightweight-charts/tutorials/how_to/panes)、[TradingView](https://www.tradingview.com/)。Lightweight Charts 为 Apache-2.0 项目，界面保留归属链接及库自带归属展示。
 # Trading_backtest_system
+
+## 实验记录管理
+
+工作台右上角点击「实验记录管理」，可以查看全部历史实验（每页 20 条）、恢复回测快照、收藏与清理记录。
+
+- 单条删除：点击实验右侧垃圾桶，在确认框核对股票、策略、创建时间与实验编号后确认。
+- 批量删除：勾选记录或选择本页未收藏实验，再点击「删除所选」。切换页面、筛选或刷新后会清空选择，避免误删隐藏记录。
+- 收藏：点击星标保存重要实验，「只看收藏」可快速查找。收藏状态持久保存，独立于原始快照。已收藏实验禁止删除，需先取消收藏；后端也会在删除时重新检查收藏状态。
+- 空间：顶部显示 DuckDB 文件与 WAL 日志的实际字节数、实验快照总大小和实验数量；每条记录显示快照大小。快照大小按已保存 JSON 的 UTF-8 字节数计算，是未压缩逻辑大小，不等于压缩后占用的磁盘空间，也不包含另外存储的信号、交易、资金曲线表和索引。
+
+删除是不可撤销操作，会在同一事务内清理实验快照及对应的信号、交易明细、资金曲线和收藏元数据；失败会全部回滚。共享行情及独立保存的策略版本不会被删除。DuckDB 文件删除记录后可能不会立即缩小，空出的空间可用于后续写入；界面不会将快照字节数当作实际释放空间。
+
+管理接口：`GET /api/experiments?page=1&page_size=20&favorites=false`（返回分页列表和整体空间统计）；`POST /api/experiments/{run_id}/favorite` 接收 `{"is_favorite": true}`；`POST /api/experiments/delete` 接收 `{"run_ids": ["实验编号"]}`，最多 100 条，返回已删除、受收藏保护和不存在的编号。原有历史回测接口保持兼容。旧数据库启动时自动增加收藏元数据表，无需重建或迁移原始快照。

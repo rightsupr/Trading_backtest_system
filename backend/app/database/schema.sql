@@ -33,3 +33,6 @@ CREATE TABLE IF NOT EXISTS strategy_definitions (
     content_hash VARCHAR NOT NULL, created_at TIMESTAMP DEFAULT current_timestamp,
     UNIQUE(family_id, revision)
 );
+CREATE TABLE IF NOT EXISTS experiment_metadata (
+    run_id VARCHAR PRIMARY KEY, is_favorite BOOLEAN NOT NULL DEFAULT false
+);

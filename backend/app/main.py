@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.api.experiment_routes import router as experiment_router
 from app.api.routes import router
 from app.api.strategy_routes import router as strategy_router
 from app.config import settings
@@ -77,6 +78,7 @@ def create_app(database_path: Path | None = None, providers=None) -> FastAPI:
 
     app.include_router(router)
     app.include_router(strategy_router)
+    app.include_router(experiment_router)
     return app
 
 
