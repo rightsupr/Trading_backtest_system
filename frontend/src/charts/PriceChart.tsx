@@ -12,10 +12,16 @@ import type {
   Time,
   Logical,
   SeriesMarker,
+  LogicalRange,
 } from "lightweight-charts";
 import type { Bar, Fill, Run, Trade } from "../types";
 import { percent } from "../services/api";
-import { dailyChange } from "../services/dailyChange";
+import ChartSettings from "../components/ChartSettings";
+import {
+  indicatorCatalog,
+  readChartPreferences,
+  displayValue,
+} from "./indicatorCatalog";
 
 interface Props {
   bars: Bar[];
@@ -50,22 +56,46 @@ export default function PriceChart({
   const [hover, setHover] = useState<Bar | null>(null);
   const [regions, setRegions] = useState<Region[]>([]);
   const [paneHeight, setPaneHeight] = useState(350);
-  const [volumeHeight, setVolumeHeight] = useState(100);
+  const [paneLabels, setPaneLabels] = useState<
+    { label: string; top: number }[]
+  >([]);
   const [plotWidth, setPlotWidth] = useState(0);
   const [clickedFill, setClickedFill] = useState<Fill | null>(null);
-  const changes = useMemo(
-    () =>
-      new Map(bars.map((bar, i) => [bar.date, dailyChange(bar, bars[i - 1])])),
-    [bars],
+  const [preferences, setPreferences] = useState(readChartPreferences);
+  const [settingsError, setSettingsError] = useState("");
+  const plots = useMemo(
+    () => indicatorCatalog(bars, run, preferences),
+    [bars, run, preferences],
   );
+  const plotSignature = JSON.stringify(
+    plots.map((p) => [p.key, p.line, p.pane, p.color]),
+  );
+  const plotsRef = useRef(plots);
+  plotsRef.current = plots;
+  const lastBars = useRef(bars);
+  const savedRange = useRef<LogicalRange | null>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem("quant.chart.v1", JSON.stringify(preferences));
+      setSettingsError("");
+    } catch {
+      setSettingsError("图表设置暂时无法保存，当前显示仍然有效。");
+    }
+  }, [preferences]);
 
   useEffect(() => {
     setHover(null);
     if (!host.current || bars.length === 0) return;
     setClickedFill(null);
+    const visiblePlots = plotsRef.current.filter((p) => p.line);
+    const paneNames = [
+      ...new Set(visiblePlots.map((p) => p.pane).filter((p) => p !== "price")),
+    ];
+    const previousRange = lastBars.current === bars ? savedRange.current : null;
+    lastBars.current = bars;
     const chart = createChart(host.current, {
       autoSize: true,
-      height: 610,
+      height: 390 + paneNames.length * 130,
       layout: {
         background: { type: ColorType.Solid, color: "#ffffff" },
         textColor: "#8791a2",
@@ -109,88 +139,40 @@ export default function PriceChart({
         close: b.close,
       })),
     );
-    const fast = chart.addSeries(LineSeries, {
-      color: "#d6a148",
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
-    const slow = chart.addSeries(LineSeries, {
-      color: "#718bc3",
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
-    const isMA =
-      !run?.request.custom_strategy &&
-      run?.request.strategy_name === "ma_cross";
-    fast.setData(
-      bars.map((b) => {
-        const v = isMA ? b.strategy_fast : b.sma_5;
-        return v == null ? { time: b.date } : { time: b.date, value: v };
-      }),
-    );
-    slow.setData(
-      bars.map((b) => {
-        const v = isMA ? b.strategy_slow : b.sma_20;
-        return v == null ? { time: b.date } : { time: b.date, value: v };
-      }),
-    );
-    const volume = chart.addSeries(
-      HistogramSeries,
-      {
-        priceFormat: { type: "volume" },
-        priceLineVisible: false,
-        lastValueVisible: false,
-      },
-      1,
-    );
-    volume.setData(
-      bars.map((b) => ({
-        time: b.date,
-        value: b.volume,
-        color: b.close >= b.open ? "#d75d6277" : "#15947c77",
-      })),
-    );
-    const hist = chart.addSeries(
-      HistogramSeries,
-      { priceLineVisible: false, lastValueVisible: false },
-      2,
-    );
-    hist.setData(
-      bars.map((b) =>
-        b.macd_hist == null
-          ? { time: b.date }
-          : {
-              time: b.date,
-              value: b.macd_hist,
-              color: b.macd_hist >= 0 ? "#d75d6299" : "#15947c99",
-            },
-      ),
-    );
-    for (const [key, color] of [
-      ["macd_dif", "#d6a148"],
-      ["macd_dea", "#718bc3"],
-    ] as const) {
-      const line = chart.addSeries(
-        LineSeries,
+    for (const plot of visiblePlots) {
+      const pane = plot.pane === "price" ? 0 : paneNames.indexOf(plot.pane) + 1;
+      const series = chart.addSeries(
+        plot.kind === "histogram" ? HistogramSeries : LineSeries,
         {
-          color,
-          lineWidth: 1,
+          color: plot.color,
           priceLineVisible: false,
           lastValueVisible: false,
+          lineWidth: 1,
+          priceFormat:
+            plot.format === "volume"
+              ? { type: "volume" }
+              : { type: "price", precision: 3, minMove: 0.001 },
         },
-        2,
+        pane,
       );
-      line.setData(
-        bars.map((b) =>
-          b[key] == null ? { time: b.date } : { time: b.date, value: b[key] },
-        ),
+      series.setData(
+        bars.map((b, i) => {
+          const value = plot.values[i];
+          if (value == null || !Number.isFinite(value)) return { time: b.date };
+          const sign = plot.key === "volume" ? b.close - b.open : value;
+          return {
+            time: b.date,
+            value,
+            ...(plot.kind === "histogram"
+              ? { color: sign >= 0 ? "#d75d6299" : `${plot.color}99` }
+              : {}),
+          };
+        }),
       );
     }
-    chart.panes()[0].setStretchFactor(350);
-    chart.panes()[1].setStretchFactor(100);
-    chart.panes()[2].setStretchFactor(132);
+    chart
+      .panes()
+      .forEach((pane, i) => pane.setStretchFactor(i === 0 ? 350 : 120));
     const fills = run?.fills ?? [];
     const markers: SeriesMarker<Time>[] = fills.map((f, i) => ({
       id: `fill-${i}`,
@@ -234,7 +216,14 @@ export default function PriceChart({
         const width = chart.paneSize(0).width;
         setPlotWidth(width);
         setPaneHeight(chart.panes()[0].getHeight());
-        setVolumeHeight(chart.panes()[1].getHeight());
+        let top = chart.panes()[0].getHeight() + 43;
+        setPaneLabels(
+          paneNames.map((label, i) => {
+            const entry = { label, top };
+            top += chart.panes()[i + 1]?.getHeight() ?? 0;
+            return entry;
+          }),
+        );
         const intervals = (run?.trades ?? []).map((t) => ({
           id: t.trade_id,
           start: t.entry_date,
@@ -285,16 +274,18 @@ export default function PriceChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(draw);
     const observer = new ResizeObserver(draw);
     observer.observe(host.current);
-    chart.timeScale().fitContent();
+    if (previousRange) chart.timeScale().setVisibleLogicalRange(previousRange);
+    else chart.timeScale().fitContent();
     draw();
     return () => {
+      savedRange.current = chart.timeScale().getVisibleLogicalRange();
       observer.disconnect();
       cancelAnimationFrame(raf);
       markerPlugin.detach();
       chart.remove();
       chartRef.current = null;
     };
-  }, [bars, run]);
+  }, [bars, run, plotSignature]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -308,10 +299,10 @@ export default function PriceChart({
         .setVisibleLogicalRange({ from: start - 10, to: end + 10 });
     }
     redraw.current();
-  }, [selected, bars]);
+  }, [selected, bars, plotSignature]);
 
   const current = hover && bars.includes(hover) ? hover : bars.at(-1);
-  const change = current ? (changes.get(current.date) ?? null) : null;
+  const currentIndex = current ? bars.indexOf(current) : -1;
   if (!bars.length)
     return (
       <div className="chart-empty">
@@ -322,116 +313,113 @@ export default function PriceChart({
       </div>
     );
   return (
-    <div className="price-chart">
-      <div className="chart-legend">
-        <strong>{current?.date}</strong>
-        {current && (
-          <>
-            <span>
-              开 <b>{current.open.toFixed(2)}</b>
-            </span>
-            <span>
-              高 <b>{current.high.toFixed(2)}</b>
-            </span>
-            <span>
-              低 <b>{current.low.toFixed(2)}</b>
-            </span>
-            <span>
-              收 <b>{current.close.toFixed(2)}</b>
-            </span>
-            <span
-              className="daily-change"
-              title="数据源涨跌幅；缺失时按当前复权行情的前一交易日收盘价计算。缺少昨收时显示 —。"
-            >
-              涨跌幅{" "}
-              <b
-                className={
-                  change == null || change === 0
-                    ? ""
-                    : change > 0
-                      ? "positive"
-                      : "negative"
-                }
-              >
-                {change == null
-                  ? "—"
-                  : `${change > 0 ? "+" : ""}${change.toFixed(2)}%`}
-              </b>
-            </span>
-          </>
-        )}
-        <span className="legend-fast">
-          MA{" "}
-          {!run?.request.custom_strategy &&
-          run?.request.strategy_name === "ma_cross"
-            ? run.request.parameters.fast_ma
-            : 5}
-        </span>
-        <span className="legend-slow">
-          MA{" "}
-          {!run?.request.custom_strategy &&
-          run?.request.strategy_name === "ma_cross"
-            ? run.request.parameters.slow_ma
-            : 20}
-        </span>
-        <button
-          className="text-button"
-          onClick={() => chartRef.current?.timeScale().fitContent()}
-        >
-          显示全部
-        </button>
-      </div>
-      <div className="chart-canvas" ref={host} />
-      <div
-        className="regions"
-        style={{ height: paneHeight, width: plotWidth }}
-        aria-hidden="true"
-      >
-        {regions.map((region) => (
-          <div
-            key={region.id}
-            className={`holding-region ${region.positive ? "profit-region" : "loss-region"} ${region.selected ? "active" : ""}`}
-            style={{ left: region.left, width: region.width }}
-          >
-            {region.width > 40 && <span>{region.text}</span>}
-          </div>
-        ))}
-      </div>
-      <span
-        className="pane-label volume-label"
-        style={{ top: paneHeight + 43 }}
-      >
-        成交量 · 股
-      </span>
-      <span
-        className="pane-label macd-label"
-        style={{ top: paneHeight + volumeHeight + 44 }}
-      >
-        MACD <i>DIF</i> <em>DEA</em> ·{" "}
-        {!run?.request.custom_strategy && run?.request.strategy_name === "macd"
-          ? Object.values(run.request.parameters).join(" / ")
-          : "12 / 26 / 9"}
-      </span>
-      {clickedFill && (
-        <aside className="marker-tooltip">
+    <>
+      <ChartSettings
+        plots={plots}
+        preferences={preferences}
+        onChange={setPreferences}
+      />
+      {settingsError && <p role="status">{settingsError}</p>}
+      <div className="price-chart">
+        <div className="chart-legend">
+          <strong>{current?.date}</strong>
+          {plots
+            .filter((p) => p.value)
+            .map((plot) => {
+              const number = plot.values[currentIndex];
+              return (
+                <span
+                  key={plot.key}
+                  className={
+                    plot.key === "daily_change"
+                      ? "daily-change"
+                      : "indicator-value"
+                  }
+                >
+                  {plot.label}{" "}
+                  <b
+                    style={{
+                      color:
+                        plot.format === "percent" && number != null
+                          ? number > 0
+                            ? "#ca555e"
+                            : number < 0
+                              ? "#168b77"
+                              : plot.color
+                          : plot.color,
+                    }}
+                  >
+                    {displayValue(plot, currentIndex)}
+                  </b>
+                </span>
+              );
+            })}
           <button
-            aria-label="关闭成交详情"
-            onClick={() => setClickedFill(null)}
+            className="text-button"
+            onClick={() => chartRef.current?.timeScale().fitContent()}
           >
-            ×
+            显示全部
           </button>
-          <strong>
-            {clickedFill.side} · {clickedFill.date} · ¥
-            {clickedFill.price.toFixed(3)}
-          </strong>
-          <span>
-            {run?.request.strategy_name} · {clickedFill.shares.toLocaleString()}{" "}
-            股
+        </div>
+        <div
+          className="chart-canvas"
+          ref={host}
+          style={{
+            height:
+              390 +
+              new Set(
+                plots
+                  .filter((p) => p.line && p.pane !== "price")
+                  .map((p) => p.pane),
+              ).size *
+                130,
+          }}
+        />
+        <div
+          className="regions"
+          style={{ height: paneHeight, width: plotWidth }}
+          aria-hidden="true"
+        >
+          {regions.map((region) => (
+            <div
+              key={region.id}
+              className={`holding-region ${region.positive ? "profit-region" : "loss-region"} ${region.selected ? "active" : ""}`}
+              style={{ left: region.left, width: region.width }}
+            >
+              {region.width > 40 && <span>{region.text}</span>}
+            </div>
+          ))}
+        </div>
+        {paneLabels.map((pane) => (
+          <span
+            key={pane.label}
+            className="pane-label"
+            style={{ top: pane.top }}
+          >
+            {pane.label}
           </span>
-          <p>{clickedFill.reason}</p>
-          <small>收盘信号日 {clickedFill.signal_date}</small>
-        </aside>
-      )}
-    </div>
+        ))}
+        {clickedFill && (
+          <aside className="marker-tooltip">
+            <button
+              aria-label="关闭成交详情"
+              onClick={() => setClickedFill(null)}
+            >
+              ×
+            </button>
+            <strong>
+              {clickedFill.side} · {clickedFill.date} · ¥
+              {clickedFill.price.toFixed(3)}
+            </strong>
+            <span>
+              {run?.request.strategy_name} ·{" "}
+              {clickedFill.shares.toLocaleString()} 股
+            </span>
+            <p>{clickedFill.reason}</p>
+            <small>收盘信号日 {clickedFill.signal_date}</small>
+          </aside>
+        )}
+      </div>
+    </>
   );
 }

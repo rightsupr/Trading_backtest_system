@@ -34,6 +34,7 @@ export interface Config {
   slippage: number;
 }
 export interface Bar {
+  [key: string]: string | number | null | undefined;
   date: string;
   open: number;
   high: number;
@@ -91,6 +92,7 @@ export interface Equity {
   drawdown: number;
 }
 export interface Run {
+  chart_series?: ChartSeries[];
   run_id: string;
   created_at: string;
   strategy_version: string;
@@ -116,6 +118,13 @@ export interface Run {
   } | null;
   rejected_orders: { date: string; side: string; reason: string }[];
   warnings: string[];
+}
+export interface ChartSeries {
+  key: string;
+  label: string;
+  pane: string;
+  color: string;
+  values: (number | null)[];
 }
 export interface Strategy {
   name: string;

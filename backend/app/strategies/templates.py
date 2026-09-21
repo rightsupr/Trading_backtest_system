@@ -36,7 +36,14 @@ PYTHON_EXAMPLES = [
                         action, target, reason = "BUY", 1, "短均线上穿长均线"
                     rows.append({"date": day, "signal": action,
                                  "position_target": target, "reason": reason})
-                return pd.DataFrame(rows)
+                result = pd.DataFrame(rows)
+                result["plot_fast"] = short_ma.to_numpy()
+                result["plot_slow"] = long_ma.to_numpy()
+                result.attrs["plots"] = [
+                    {"column": "plot_fast", "label": f"策略 MA{fast}", "pane": "price", "color": "#d6a148"},
+                    {"column": "plot_slow", "label": f"策略 MA{slow}", "pane": "price", "color": "#718bc3"},
+                ]
+                return result
         '''),
     },
     {
@@ -67,7 +74,14 @@ PYTHON_EXAMPLES = [
                         action, target, reason = "BUY", 1, f"零轴下 DIF 斜率拐头：{rate.iloc[i]:.4f}"
                     rows.append({"date": day, "signal": action,
                                  "position_target": target, "reason": reason})
-                return pd.DataFrame(rows)
+                result = pd.DataFrame(rows)
+                result["plot_slope"] = rate.to_numpy()
+                result["plot_buy_threshold"] = params.get("buy_threshold", 0.05)
+                result.attrs["plots"] = [
+                    {"column": "plot_slope", "label": "DIF 斜率", "pane": "策略斜率", "color": "#d6a148"},
+                    {"column": "plot_buy_threshold", "label": "买入阈值", "pane": "策略斜率", "color": "#8b6cc1"},
+                ]
+                return result
         """),
     },
 ]

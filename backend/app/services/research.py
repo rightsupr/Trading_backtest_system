@@ -54,6 +54,7 @@ def run_research(repository, request):
             "created_at": datetime.now(UTC).isoformat(),
             "bars": snapshot,
             "signals": records(signals),
+            "chart_series": signals.attrs.get("chart_series", []),
             "data_hash": hashlib.sha256(json.dumps(snapshot).encode()).hexdigest(),
             "warnings": [
                 "复权价格用于研究撮合，未独立核算分红送转与历史印花税变化。",

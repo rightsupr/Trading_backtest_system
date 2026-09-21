@@ -1936,3 +1936,86 @@ tbody tr.selected td {
 .experiment-table tbody tr {
   cursor: default;
 }
+
+.chart-settings {
+  border-bottom: 1px solid #e9edf2;
+  background: #fafcfd;
+}
+.chart-settings-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+}
+.chart-settings-toolbar span {
+  color: #8592a1;
+  font-size: 11px;
+}
+.chart-settings-body {
+  padding: 0 20px 18px;
+}
+.chart-settings-body > p {
+  color: #7b8997;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.chart-average-add {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0;
+}
+.chart-average-add input {
+  width: 90px;
+}
+.chart-settings-table {
+  overflow: auto;
+  max-height: 340px;
+  margin-bottom: 12px;
+  border: 1px solid #e4e9ef;
+  border-radius: 6px;
+}
+.chart-settings-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  text-align: left;
+  font-size: 12px;
+}
+.chart-settings-table th {
+  position: sticky;
+  top: 0;
+  background: #edf4f1;
+  z-index: 1;
+}
+.chart-settings-table th,
+.chart-settings-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid #edf0f3;
+  white-space: nowrap;
+}
+.chart-settings-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #177c69;
+}
+.chart-settings-table input[type="color"] {
+  width: 38px;
+  height: 26px;
+  padding: 2px;
+}
+.chart-settings-table select {
+  max-width: 180px;
+  height: 30px;
+}
+.chart-settings-table small {
+  color: #177c69;
+}
+.python-reference pre {
+  white-space: pre;
+  overflow-x: auto;
+  background: #f5f7fa;
+  padding: 14px;
+  line-height: 1.7;
+}

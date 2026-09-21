@@ -142,8 +142,32 @@ export default function PythonEditor({
         </p>
         <p>
           示例可导入 app.indicators.technical 的 sma、ema、calculate_macd、slope
-          等函数；自定义指标仅用于信号，图表目前仍显示标准指标。代码可用 Python
+          等函数；自定义指标可通过下面的绘图输出显示在图表。代码可用 Python
           和已安装依赖，无需继承类或修改系统目录。
+        </p>
+      </details>
+      <details className="python-reference">
+        <summary>让策略均线、止损线和自定义指标显示在图表</summary>
+        <p>
+          在返回的 DataFrame 中增加 plot_
+          开头的数值列，回测后会自动显示。数值必须与输入日期逐行对应，预热期使用
+          NaN；不要使用未来数据。
+        </p>
+        <pre>{`# 将原来的 return pd.DataFrame(rows) 改为：
+result = pd.DataFrame(rows)
+result["plot_MA5"] = data["close"].rolling(5).mean().to_numpy()
+result["plot_MA20"] = data["close"].rolling(20).mean().to_numpy()
+result["plot_RSI"] = data["rsi"].to_numpy()
+result.attrs["plots"] = [
+    {"column": "plot_MA5", "label": "MA5", "pane": "price", "color": "#d6a148"},
+    {"column": "plot_MA20", "label": "MA20", "pane": "price", "color": "#718bc3"},
+    {"column": "plot_RSI", "label": "策略 RSI", "pane": "策略动量", "color": "#8b6cc1"},
+]
+return result`}</pre>
+        <p>
+          price 表示 K 线主图；相同的其他 pane 名称共用一个副图。最多 20
+          条。建议直接输出策略实际计算的变量（例如
+          short_ma.to_numpy()），保证图上数值与信号一致。旧回测没有保存这些输出，需重新运行策略后才能显示；图表设置不会改变回测结果。
         </p>
       </details>
     </div>

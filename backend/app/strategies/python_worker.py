@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from app.services.serialization import records
+from app.strategies.chart_output import chart_output
 from app.strategies.contracts import validate_signals
 
 
@@ -22,21 +23,31 @@ def execute(payload: dict) -> dict:
         function = namespace.get("generate_signals")
         if not callable(function):
             raise TypeError("generate_signals 必须是可调用函数")
-        return validate_signals(function(frame.copy(deep=True), copy.deepcopy(payload["params"])), frame)
+        value = function(frame.copy(deep=True), copy.deepcopy(payload["params"]))
+        signals = validate_signals(value, frame)
+        return signals, chart_output(value)
 
-    signals = calculate(data)
+    signals, plots = calculate(data)
     # This detects common lookahead mistakes; it is not a proof for arbitrary Python.
     for cut in sorted({len(data) // 2, len(data) - 1}):
         if cut < 2:
             continue
-        partial = calculate(data.iloc[:cut])
+        partial, partial_plots = calculate(data.iloc[:cut])
         try:
             pd.testing.assert_frame_equal(signals.iloc[:cut], partial, check_dtype=False)
+            if [{k: v for k, v in p.items() if k != "values"} for p in plots] != [
+                {k: v for k, v in p.items() if k != "values"} for p in partial_plots
+            ]:
+                raise AssertionError("指标定义随未来数据改变")
+            for full, prefix in zip(plots, partial_plots):
+                pd.testing.assert_series_equal(
+                    pd.Series(full["values"][:cut]), pd.Series(prefix["values"]), check_dtype=False
+                )
         except AssertionError as exc:
             raise ValueError(
-                f"历史前缀检查失败（前 {cut} 根）：信号随未来数据改变，或策略含随机/外部状态"
+                f"历史前缀检查失败（前 {cut} 根）：信号或绘图指标随未来数据改变，或策略含随机/外部状态"
             ) from exc
-    return {"signals": records(signals)}
+    return {"signals": records(signals), "chart_series": plots}
 
 
 def main():

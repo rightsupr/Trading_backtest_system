@@ -59,4 +59,6 @@ def run_python_strategy(data: pd.DataFrame, code: str, params: dict, timeout: fl
             raise ValueError("Python 策略返回了无法读取的结果") from exc
         if "error" in result:
             raise ValueError(result["error"])
-        return validate_signals(pd.DataFrame(result["signals"]), data)
+        signals = validate_signals(pd.DataFrame(result["signals"]), data)
+        signals.attrs["chart_series"] = result.get("chart_series", [])
+        return signals
