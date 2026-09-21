@@ -865,8 +865,12 @@ h2 span {
     10px "IBM Plex Mono",
     monospace;
   color: #a0a8b3;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   white-space: nowrap;
+}
+.chart-legend > * {
+  flex-shrink: 0;
 }
 .chart-legend b {
   font-weight: 400;
@@ -1422,6 +1426,47 @@ tbody tr.selected td {
 .workbench-header select {
   max-width: 360px;
   font-size: 11px;
+}
+.workbench-library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.workbench-library-actions select {
+  min-width: 160px;
+  flex: 1;
+}
+.strategy-compact-description {
+  margin-top: 12px;
+  color: #7c8997;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 3.2em;
+  overflow: hidden;
+}
+.strategy-delete-confirm {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #e9c6ba;
+  border-radius: 6px;
+  background: #fff9f6;
+}
+.strategy-delete-confirm p {
+  margin: 8px 0 12px;
+  color: #7c655e;
+  line-height: 1.6;
+}
+.strategy-delete-confirm button {
+  margin-right: 8px;
+}
+@media (max-width: 1000px) {
+  .workbench-header {
+    flex-wrap: wrap;
+  }
+  .workbench-library-actions {
+    width: 100%;
+  }
 }
 .strategy-meta {
   display: flex;

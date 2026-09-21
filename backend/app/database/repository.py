@@ -233,7 +233,8 @@ class Repository:
             family, revision = identifier, 1
             if parent_id:
                 parent = conn.execute(
-                    "SELECT family_id FROM strategy_definitions WHERE definition_id=?", [parent_id]
+                    "SELECT family_id FROM strategy_definitions WHERE definition_id=? AND deleted=false",
+                    [parent_id],
                 ).fetchone()
                 if parent is None:
                     raise ValueError("原策略版本不存在，请另存为新策略")
@@ -242,7 +243,7 @@ class Repository:
                     "SELECT max(revision)+1 FROM strategy_definitions WHERE family_id=?", [family]
                 ).fetchone()[0]
             conn.execute(
-                "INSERT INTO strategy_definitions VALUES (?, ?, ?, ?, ?, ?, ?, current_timestamp)",
+                "INSERT INTO strategy_definitions VALUES (?, ?, ?, ?, ?, ?, ?, current_timestamp, false)",
                 [
                     identifier,
                     family,
@@ -259,7 +260,7 @@ class Repository:
         with self.connection() as conn:
             row = conn.execute(
                 "SELECT definition_id, family_id, revision, definition_json, content_hash, created_at "
-                "FROM strategy_definitions WHERE definition_id=?",
+                "FROM strategy_definitions WHERE definition_id=? AND deleted=false",
                 [identifier],
             ).fetchone()
         if row is None:
@@ -277,7 +278,7 @@ class Repository:
         with self.connection() as conn:
             rows = conn.execute(
                 "SELECT definition_id, family_id, revision, name, kind, created_at "
-                "FROM strategy_definitions ORDER BY created_at DESC"
+                "FROM strategy_definitions WHERE deleted=false ORDER BY created_at DESC"
             ).fetchall()
         return [
             {
@@ -290,3 +291,15 @@ class Repository:
             }
             for r in rows
         ]
+
+    def delete_definition(self, identifier: str) -> bool:
+        # Retain revision numbers and archived content; saved runs own independent snapshots.
+        with self.connection() as conn:
+            return (
+                conn.execute(
+                    "UPDATE strategy_definitions SET deleted=true WHERE definition_id=? AND deleted=false "
+                    "RETURNING definition_id",
+                    [identifier],
+                ).fetchone()
+                is not None
+            )

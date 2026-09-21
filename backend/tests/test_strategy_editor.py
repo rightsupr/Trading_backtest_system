@@ -225,3 +225,60 @@ def test_external_browser_origin_cannot_submit_python(tmp_path):
         assert response.status_code == 403
         response = client.get("/api/health", headers={"Host": "external.example"})
         assert response.status_code == 400
+
+
+@pytest.mark.parametrize("definition_factory", [rules_definition, python_definition])
+def test_delete_strategy_version_preserves_snapshot_and_revision_sequence(tmp_path, definition_factory):
+    path = tmp_path / "delete.duckdb"
+    definition = definition_factory()
+    prefix = "/api/strategy-editor/definitions"
+    with TestClient(create_app(path, start_scheduler=False)) as client:
+        first = client.post(prefix, json={"definition": definition}).json()
+        second = client.post(
+            prefix, json={"definition": definition, "parent_id": first["definition_id"]}
+        ).json()
+        body = {"symbol": "000938", "source": "sample", "start_date": "2023-01-01", "end_date": "2024-12-31"}
+        client.post("/api/data/download", json=body)
+        result = client.post("/api/backtest", json={**body, "custom_strategy": definition})
+        assert result.status_code == 200
+        snapshot = result.json()
+        deletion = f"{prefix}/{second['definition_id']}/delete"
+        assert (
+            client.post(deletion, json={}, headers={"origin": "https://untrusted.example"}).status_code == 403
+        )
+        assert client.get(f"{prefix}/{second['definition_id']}").status_code == 200
+        assert client.post(deletion, json={}).status_code == 200
+        assert client.post(deletion, json={}).status_code == 404
+        assert client.get(f"{prefix}/{second['definition_id']}").status_code == 404
+        assert len(client.get(prefix).json()) == 1
+        assert client.get(f"/api/backtest/{snapshot['run_id']}").json() == snapshot
+        assert (
+            client.post(
+                prefix, json={"definition": definition, "parent_id": second["definition_id"]}
+            ).status_code
+            == 422
+        )
+        third = client.post(
+            prefix, json={"definition": definition, "parent_id": first["definition_id"]}
+        ).json()
+        assert third["revision"] == 3
+    with TestClient(create_app(path, start_scheduler=False)) as client:
+        assert len(client.get(prefix).json()) == 2
+        assert client.get(f"{prefix}/{second['definition_id']}").status_code == 404
+        assert client.get(f"/api/backtest/{snapshot['run_id']}").json() == snapshot
+
+
+def test_strategy_deletion_migrates_old_database(tmp_path):
+    import duckdb
+
+    from app.database.repository import Repository
+
+    path = tmp_path / "legacy.duckdb"
+    repo = Repository(path)
+    first = repo.save_definition(rules_definition(), "legacy-hash")
+    with duckdb.connect(str(path)) as conn:
+        conn.execute("ALTER TABLE strategy_definitions DROP COLUMN deleted")
+    restored = Repository(path)
+    assert restored.get_definition(first["definition_id"]) == first
+    assert restored.delete_definition(first["definition_id"])
+    assert restored.list_definitions() == []

@@ -40,6 +40,8 @@ export interface Bar {
   low: number;
   close: number;
   volume: number;
+  pre_close?: number | null;
+  pct_change?: number | null;
   sma_5: number | null;
   sma_20: number | null;
   strategy_fast?: number | null;

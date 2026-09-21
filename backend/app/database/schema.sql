@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS strategy_definitions (
 CREATE TABLE IF NOT EXISTS experiment_metadata (
     run_id VARCHAR PRIMARY KEY, is_favorite BOOLEAN NOT NULL DEFAULT false
 );
+ALTER TABLE strategy_definitions ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false;
 CREATE TABLE IF NOT EXISTS market_update_settings (
     id INTEGER PRIMARY KEY, enabled BOOLEAN NOT NULL
 );

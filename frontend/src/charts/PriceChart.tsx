@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CandlestickSeries,
   ColorType,
@@ -15,6 +15,7 @@ import type {
 } from "lightweight-charts";
 import type { Bar, Fill, Run, Trade } from "../types";
 import { percent } from "../services/api";
+import { dailyChange } from "../services/dailyChange";
 
 interface Props {
   bars: Bar[];
@@ -52,8 +53,14 @@ export default function PriceChart({
   const [volumeHeight, setVolumeHeight] = useState(100);
   const [plotWidth, setPlotWidth] = useState(0);
   const [clickedFill, setClickedFill] = useState<Fill | null>(null);
+  const changes = useMemo(
+    () =>
+      new Map(bars.map((bar, i) => [bar.date, dailyChange(bar, bars[i - 1])])),
+    [bars],
+  );
 
   useEffect(() => {
+    setHover(null);
     if (!host.current || bars.length === 0) return;
     setClickedFill(null);
     const chart = createChart(host.current, {
@@ -114,7 +121,9 @@ export default function PriceChart({
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const isMA = !run?.request.custom_strategy && run?.request.strategy_name === "ma_cross";
+    const isMA =
+      !run?.request.custom_strategy &&
+      run?.request.strategy_name === "ma_cross";
     fast.setData(
       bars.map((b) => {
         const v = isMA ? b.strategy_fast : b.sma_5;
@@ -301,7 +310,8 @@ export default function PriceChart({
     redraw.current();
   }, [selected, bars]);
 
-  const current = hover ?? bars.at(-1);
+  const current = hover && bars.includes(hover) ? hover : bars.at(-1);
+  const change = current ? (changes.get(current.date) ?? null) : null;
   if (!bars.length)
     return (
       <div className="chart-empty">
@@ -329,17 +339,38 @@ export default function PriceChart({
             <span>
               收 <b>{current.close.toFixed(2)}</b>
             </span>
+            <span
+              className="daily-change"
+              title="数据源涨跌幅；缺失时按当前复权行情的前一交易日收盘价计算。缺少昨收时显示 —。"
+            >
+              涨跌幅{" "}
+              <b
+                className={
+                  change == null || change === 0
+                    ? ""
+                    : change > 0
+                      ? "positive"
+                      : "negative"
+                }
+              >
+                {change == null
+                  ? "—"
+                  : `${change > 0 ? "+" : ""}${change.toFixed(2)}%`}
+              </b>
+            </span>
           </>
         )}
         <span className="legend-fast">
           MA{" "}
-          {!run?.request.custom_strategy && run?.request.strategy_name === "ma_cross"
+          {!run?.request.custom_strategy &&
+          run?.request.strategy_name === "ma_cross"
             ? run.request.parameters.fast_ma
             : 5}
         </span>
         <span className="legend-slow">
           MA{" "}
-          {!run?.request.custom_strategy && run?.request.strategy_name === "ma_cross"
+          {!run?.request.custom_strategy &&
+          run?.request.strategy_name === "ma_cross"
             ? run.request.parameters.slow_ma
             : 20}
         </span>

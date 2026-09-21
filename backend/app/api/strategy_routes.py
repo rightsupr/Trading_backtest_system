@@ -36,6 +36,13 @@ def get_definition(definition_id: str, request: Request):
     return result
 
 
+@router.post("/definitions/{definition_id}/delete")
+def delete_definition(definition_id: str, request: Request):
+    if not request.app.state.repo.delete_definition(definition_id):
+        raise HTTPException(404, "未找到策略版本，可能已被删除")
+    return {"deleted_id": definition_id}
+
+
 @router.post("/validate")
 def validate_strategy(body: BacktestRequest, request: Request):
     if body.custom_strategy is None:
