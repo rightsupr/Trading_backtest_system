@@ -45,6 +45,59 @@ class Repository:
                 [symbol, adjust, source],
             ).fetchone()
 
+    def saved_stocks(self) -> list[dict]:
+        """Discover existing caches too; no separate watchlist migration is required."""
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT b.symbol, coalesce(s.name, b.symbol), b.adjust_type, b.data_source, "
+                "min(b.date), max(b.date), count(*), max(b.updated_at), "
+                "u.checked_at, u.target_date, u.status, u.message "
+                "FROM daily_bars b LEFT JOIN stocks s ON s.symbol=b.symbol "
+                "LEFT JOIN market_update_status u ON u.symbol=b.symbol "
+                "AND u.adjust_type=b.adjust_type AND u.data_source=b.data_source "
+                "GROUP BY b.symbol, s.name, b.adjust_type, b.data_source, "
+                "u.checked_at, u.target_date, u.status, u.message "
+                "ORDER BY b.symbol, b.data_source, b.adjust_type"
+            ).fetchall()
+        keys = [
+            "symbol",
+            "name",
+            "adjust",
+            "source",
+            "start_date",
+            "end_date",
+            "bars",
+            "updated_at",
+            "checked_at",
+            "target_date",
+            "status",
+            "message",
+        ]
+        return [
+            dict(zip(keys, [str(v) if v is not None and i in (4, 5, 7, 9) else v for i, v in enumerate(row)]))
+            for row in rows
+        ]
+
+    def auto_update_enabled(self) -> bool:
+        with self.connection() as conn:
+            return conn.execute("SELECT enabled FROM market_update_settings WHERE id=1").fetchone()[0]
+
+    def save_stock_names(self, names: dict[str, str]):
+        with self.connection() as conn:
+            for symbol, name in names.items():
+                conn.execute("UPDATE stocks SET name=? WHERE symbol=?", [name, symbol])
+
+    def set_auto_update(self, enabled: bool):
+        with self.connection() as conn:
+            conn.execute("UPDATE market_update_settings SET enabled=? WHERE id=1", [enabled])
+
+    def record_market_update(self, symbol, adjust, source, checked_at, target, status, message):
+        with self.connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO market_update_status VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [symbol, adjust, source, checked_at, target, status, message],
+            )
+
     def upsert_bars(
         self,
         symbol: str,
@@ -81,7 +134,13 @@ class Repository:
                 conn.register("incoming", rows)
                 conn.execute("INSERT OR REPLACE INTO daily_bars SELECT *, current_timestamp FROM incoming")
                 conn.execute(
-                    "INSERT OR REPLACE INTO stocks VALUES (?, ?, current_timestamp)", [symbol, symbol]
+                    "INSERT INTO stocks VALUES (?, ?, current_timestamp) "
+                    "ON CONFLICT(symbol) DO UPDATE SET updated_at=excluded.updated_at",
+                    [symbol, symbol],
+                )
+                conn.execute(
+                    "DELETE FROM market_update_status WHERE symbol=? AND adjust_type=? AND data_source=?",
+                    [symbol, adjust, source],
                 )
                 conn.execute("COMMIT")
             except Exception:

@@ -36,3 +36,14 @@ CREATE TABLE IF NOT EXISTS strategy_definitions (
 CREATE TABLE IF NOT EXISTS experiment_metadata (
     run_id VARCHAR PRIMARY KEY, is_favorite BOOLEAN NOT NULL DEFAULT false
 );
+CREATE TABLE IF NOT EXISTS market_update_settings (
+    id INTEGER PRIMARY KEY, enabled BOOLEAN NOT NULL
+);
+INSERT INTO market_update_settings SELECT 1, true
+WHERE NOT EXISTS (SELECT 1 FROM market_update_settings WHERE id=1);
+CREATE TABLE IF NOT EXISTS market_update_status (
+    symbol VARCHAR, adjust_type VARCHAR, data_source VARCHAR,
+    checked_at VARCHAR NOT NULL, target_date DATE NOT NULL,
+    status VARCHAR NOT NULL, message VARCHAR NOT NULL,
+    PRIMARY KEY (symbol, adjust_type, data_source)
+);

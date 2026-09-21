@@ -13,6 +13,23 @@ class TencentProvider(BaseMarketDataProvider):
 
     name = "tencent"
 
+    def get_stock_names(self, symbols: list[str]) -> dict[str, str]:
+        names = {}
+        for offset in range(0, len(symbols), 100):
+            batch = symbols[offset : offset + 100]
+            codes = [
+                ("sh" if s.startswith(("6", "9")) else "bj" if s.startswith(("4", "8")) else "sz") + s
+                for s in batch
+            ]
+            response = requests.get("https://qt.gtimg.cn/q=" + ",".join(codes), timeout=10)
+            response.raise_for_status()
+            response.encoding = "gbk"
+            for line in response.text.splitlines():
+                fields = line.split("~")
+                if len(fields) >= 3 and fields[2] in batch and fields[1].strip():
+                    names[fields[2]] = fields[1].strip()
+        return names
+
     def get_daily_bars(self, symbol: str, start_date: date, end_date: date, adjust: str) -> pd.DataFrame:
         prefix = "sh" if symbol.startswith(("6", "9")) else "bj" if symbol.startswith(("4", "8")) else "sz"
         code = prefix + symbol

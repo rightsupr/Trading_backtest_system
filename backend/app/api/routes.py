@@ -2,6 +2,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 
 from app.indicators.technical import IndicatorRegistry, chart_indicators
 from app.models.schemas import Adjust, BacktestConfig, BacktestRequest, DataRequest, Source
@@ -10,6 +11,32 @@ from app.services.serialization import records
 from app.strategies import STRATEGIES
 
 router = APIRouter(prefix="/api")
+
+
+class AutoUpdateSettings(BaseModel):
+    enabled: bool
+
+
+class WatchlistUpdateRequest(BaseModel):
+    symbol: str | None = Field(default=None, pattern=r"^\d{6}$")
+
+
+@router.get("/watchlist")
+def watchlist(request: Request):
+    return {"stocks": request.app.state.repo.saved_stocks(), **request.app.state.watchlist.status()}
+
+
+@router.post("/watchlist/settings")
+def watchlist_settings(body: AutoUpdateSettings, request: Request):
+    request.app.state.repo.set_auto_update(body.enabled)
+    return request.app.state.watchlist.status()
+
+
+@router.post("/watchlist/update")
+def update_watchlist(body: WatchlistUpdateRequest, request: Request):
+    if body.symbol and not any(s["symbol"] == body.symbol for s in request.app.state.repo.saved_stocks()):
+        raise HTTPException(404, "请先下载该股票的历史行情")
+    return request.app.state.watchlist.update(symbol=body.symbol)
 
 
 @router.get("/health")

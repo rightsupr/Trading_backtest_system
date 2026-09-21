@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,17 +16,24 @@ from app.config import settings
 from app.data.base import AdjustmentChanged, ProviderError
 from app.database.repository import Repository
 from app.services.market import MarketService
+from app.services.watchlist import WatchlistUpdater
 
 logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def create_app(database_path: Path | None = None, providers=None) -> FastAPI:
+def create_app(database_path: Path | None = None, providers=None, start_scheduler: bool = True) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         app.state.repo = Repository(database_path or settings.db_path)
         app.state.market = MarketService(app.state.repo, providers)
-        yield
+        app.state.watchlist = WatchlistUpdater(app.state.repo, app.state.market)
+        if start_scheduler:
+            app.state.watchlist.start()
+        try:
+            yield
+        finally:
+            await asyncio.to_thread(app.state.watchlist.stop)
 
     app = FastAPI(title="Local Stock Research", version="0.1.0", lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "[::1]", "testserver"])

@@ -2,6 +2,7 @@ import logging
 import math
 from datetime import timedelta
 from threading import RLock
+from time import monotonic
 
 from app.data.base import AdjustmentChanged, ProviderError, validate_bars
 from app.data.eastmoney import EastMoneyProvider
@@ -21,6 +22,29 @@ class MarketService:
             "sample": SampleProvider(),
         }
         self.lock = RLock()
+        self.name_attempts = {}
+
+    def fill_stock_names(self):
+        provider = self.providers.get("tencent")
+        if not hasattr(provider, "get_stock_names"):
+            return
+        now = monotonic()
+        symbols = sorted(
+            {
+                s["symbol"]
+                for s in self.repo.saved_stocks()
+                if s["source"] != "sample"
+                and (not s["name"] or s["name"] == s["symbol"])
+                and now - self.name_attempts.get(s["symbol"], float("-inf")) >= 3600
+            }
+        )
+        if not symbols:
+            return
+        self.name_attempts.update(dict.fromkeys(symbols, now))
+        try:
+            self.repo.save_stock_names(provider.get_stock_names(symbols))
+        except Exception:
+            logger.warning("Stock names unavailable; existing names and bars are preserved", exc_info=True)
 
     def download(self, request: DataRequest, incremental: bool = False) -> dict:
         with self.lock:

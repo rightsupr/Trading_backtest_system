@@ -6,6 +6,26 @@ export interface Query {
   adjust: "raw" | "qfq" | "hfq";
   source: "eastmoney" | "tencent" | "sample";
 }
+export interface SavedStock {
+  symbol: string;
+  name: string;
+  source: Query["source"];
+  adjust: Query["adjust"];
+  start_date: string;
+  end_date: string;
+  bars: number;
+  updated_at: string;
+  checked_at: string | null;
+  status: "success" | "waiting" | "error" | "refresh_required" | null;
+  message: string | null;
+}
+export interface WatchlistData {
+  stocks: SavedStock[];
+  enabled: boolean;
+  running: boolean;
+  schedule: string;
+  target_date: string;
+}
 export interface Config {
   initial_cash: number;
   commission_rate: number;
