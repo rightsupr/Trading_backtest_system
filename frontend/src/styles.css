@@ -2044,3 +2044,97 @@ tbody tr.selected td {
   padding: 14px;
   line-height: 1.7;
 }
+
+.chart-legend .measure-toggle {
+  margin-left: auto;
+}
+.chart-legend .measure-toggle + .text-button {
+  margin-left: 0;
+}
+.measure-toggle.active {
+  color: #226bba;
+  background: #edf5ff;
+  border-radius: 4px;
+}
+.chart-measurement {
+  position: absolute;
+  top: 38px;
+  left: 0;
+  z-index: 5;
+  pointer-events: none;
+  overflow: hidden;
+}
+.chart-measurement.measuring {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+}
+.measurement-drawing {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.measurement-endpoint {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 2px solid #64748b;
+  border-radius: 50%;
+  background: white;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: ew-resize;
+}
+.measurement-endpoint:focus-visible {
+  outline: 2px solid #226bba;
+  outline-offset: 2px;
+}
+.measurement-result {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 28px 10px 12px;
+  border: 1px solid #dce3ec;
+  border-radius: 6px;
+  background: #fffffff5;
+  box-shadow: 0 4px 16px #24314312;
+  color: #65748a;
+  font: 11px ui-monospace, SFMono-Regular, monospace;
+  pointer-events: auto;
+  cursor: default;
+}
+.measurement-result strong {
+  font-size: 18px;
+}
+.measurement-result small {
+  font-size: 11px;
+  font-weight: 500;
+}
+.measurement-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  border: 0;
+  background: transparent;
+  color: #65748a;
+  font-size: 18px;
+  cursor: pointer;
+}
+.measurement-hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border: 1px solid #dce3ec;
+  border-radius: 4px;
+  background: #fffffff0;
+  color: #65748a;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}

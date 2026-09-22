@@ -17,6 +17,7 @@ import type {
 import type { Bar, Fill, Run, Trade } from "../types";
 import { percent } from "../services/api";
 import ChartSettings from "../components/ChartSettings";
+import { useChartMeasurement } from "./useChartMeasurement";
 import {
   indicatorCatalog,
   readChartPreferences,
@@ -47,6 +48,8 @@ export default function PriceChart({
   onFill,
 }: Props) {
   const host = useRef<HTMLDivElement>(null);
+  const measurement = useChartMeasurement(bars);
+  const { attach: attachMeasurement, redraw: redrawMeasurement } = measurement;
   const chartRef = useRef<IChartApi | null>(null);
   const callbacks = useRef({ onSelect, onFill });
   callbacks.current = { onSelect, onFill };
@@ -130,6 +133,7 @@ export default function PriceChart({
       wickDownColor: "#15947c",
       priceLineVisible: false,
     });
+    const detachMeasurement = attachMeasurement(chart, candle);
     candle.setData(
       bars.map((b) => ({
         time: b.date,
@@ -213,6 +217,7 @@ export default function PriceChart({
     const draw = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
+        redrawMeasurement();
         const width = chart.paneSize(0).width;
         setPlotWidth(width);
         setPaneHeight(chart.panes()[0].getHeight());
@@ -281,11 +286,12 @@ export default function PriceChart({
       savedRange.current = chart.timeScale().getVisibleLogicalRange();
       observer.disconnect();
       cancelAnimationFrame(raf);
+      detachMeasurement();
       markerPlugin.detach();
       chart.remove();
       chartRef.current = null;
     };
-  }, [bars, run, plotSignature]);
+  }, [bars, run, plotSignature, attachMeasurement, redrawMeasurement]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -354,6 +360,7 @@ export default function PriceChart({
                 </span>
               );
             })}
+          {measurement.button}
           <button
             className="text-button"
             onClick={() => chartRef.current?.timeScale().fitContent()}
@@ -390,6 +397,7 @@ export default function PriceChart({
             </div>
           ))}
         </div>
+        {measurement.overlay}
         {paneLabels.map((pane) => (
           <span
             key={pane.label}

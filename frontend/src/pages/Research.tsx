@@ -757,7 +757,7 @@ export default function Research() {
               onFill={setFill}
             />
             <div className="chart-footer">
-              <span>滚轮缩放 · 拖动平移 · 点击买卖箭头查看原因</span>
+              <span>滚轮缩放 · 拖动平移 · Shift + 拖动测量 · 点击买卖箭头查看原因</span>
               <a
                 href="https://www.tradingview.com/"
                 target="_blank"
