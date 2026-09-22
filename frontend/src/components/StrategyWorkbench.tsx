@@ -4,30 +4,38 @@ import type { Config, Query } from "../types";
 import type {
   PythonExample,
   SavedStrategy,
+  StrategyFile,
   StrategyDefinition,
   StrategyVersion,
 } from "../types/strategy";
-import RuleEditor from "./RuleEditor";
 import PythonEditor from "./PythonEditor";
 
 interface Props {
   value: StrategyDefinition;
   onChange: (v: StrategyDefinition) => void;
+  fileName: string | null;
+  onFileChange: (filename: string | null) => void;
   query: Query;
   config: Config;
   hasBars: boolean;
   disabled: boolean;
+  deletedIds: string[];
 }
 export default function StrategyWorkbench({
   value,
   onChange,
+  fileName,
+  onFileChange,
   query,
   config,
   hasBars,
   disabled,
+  deletedIds,
 }: Props) {
   const [examples, setExamples] = useState<PythonExample[]>([]);
   const [library, setLibrary] = useState<SavedStrategy[]>([]);
+  const [files, setFiles] = useState<StrategyFile[]>([]);
+  const [fileDefinition, setFileDefinition] = useState<StrategyDefinition | null>(null);
   const [parent, setParent] = useState<string | null>(null);
   const [localBusy, setLocalBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -38,23 +46,50 @@ export default function StrategyWorkbench({
   >([]);
   const [revision, setRevision] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<SavedStrategy | null>(null);
   useEffect(() => {
     Promise.all([
       api<PythonExample[]>("/strategy-editor/examples"),
       api<SavedStrategy[]>("/strategy-editor/definitions"),
+      api<StrategyFile[]>("/strategy-editor/files"),
     ])
-      .then(([e, s]) => {
+      .then(([e, s, f]) => {
         setExamples(e);
         setLibrary(s);
+        setFiles(f);
       })
       .catch((e) => setError(e.message));
   }, []);
   useEffect(() => {
+    setLibrary((items) => items.filter((s) => !deletedIds.includes(s.definition_id)));
+    if (parent && deletedIds.includes(parent)) {
+      setParent(null);
+      setRevision(null);
+      setSavedContent("");
+    }
+  }, [deletedIds, parent]);
+  useEffect(() => {
+    if (!fileName) {
+      setFileDefinition(null);
+      return;
+    }
+    setFileDefinition(null);
+    let cancelled = false;
+    api<StrategyDefinition>(`/strategy-editor/files/${encodeURIComponent(fileName)}`)
+      .then((definition) => {
+        if (!cancelled) setFileDefinition(definition);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fileName]);
+  useEffect(() => {
     setMessage("");
     setPreview([]);
     setError("");
-  }, [value, query]);
+  }, [value, query, fileName]);
   const perform = async (action: () => Promise<void>) => {
     setLocalBusy(true);
     setError("");
@@ -77,21 +112,59 @@ export default function StrategyWorkbench({
       setSavedContent(JSON.stringify(value));
       setLibrary(await api<SavedStrategy[]>("/strategy-editor/definitions"));
       setMessage(
-        `已保存 V${result.revision}。保存不会运行代码；运行回测会另存完整规则/代码快照。`,
+        `已保存 V${result.revision}。保存不会运行代码；运行回测会另存完整代码快照。`,
       );
     });
+  const saveFile = () => {
+    if (!fileName) return;
+    void perform(async () => {
+      const definition = await api<StrategyDefinition>(
+        `/strategy-editor/files/${encodeURIComponent(fileName)}`,
+      );
+      const result = await api<StrategyVersion>(
+        "/strategy-editor/definitions",
+        { definition, parent_id: parent },
+      );
+      setFileDefinition(definition);
+      setParent(result.definition_id);
+      setRevision(result.revision);
+      setSavedContent(JSON.stringify(definition));
+      setLibrary(await api<SavedStrategy[]>("/strategy-editor/definitions"));
+      setMessage(
+        `已将 strategy/${fileName} 保存为 V${result.revision}。策略库保存的是本次代码副本；文件模式继续读取最新文件。`,
+      );
+    });
+  };
   const load = (id: string) => {
     if (!id) return;
+    if (library.find((item) => item.definition_id === id)?.kind === "rules") return;
     void perform(async () => {
       const result = await api<StrategyVersion>(
         `/strategy-editor/definitions/${id}`,
       );
       onChange(result.definition);
+      onFileChange(null);
       setParent(id);
       setRevision(result.revision);
       setSavedContent(JSON.stringify(result.definition));
     });
   };
+  const selectFile = (filename: string | null) => {
+    setParent(null);
+    setRevision(null);
+    setSavedContent("");
+    onFileChange(filename);
+  };
+  const refreshFiles = () =>
+    perform(async () => {
+      setFiles(await api<StrategyFile[]>("/strategy-editor/files"));
+      if (fileName) {
+        setFileDefinition(await api<StrategyDefinition>(
+          `/strategy-editor/files/${encodeURIComponent(fileName)}`,
+        ));
+      }
+      setMessage("已读取 strategy 文件夹中的最新策略和代码。校验与回测也会重新读取文件。");
+    });
   const validate = () =>
     perform(async () => {
       const result = await api<{
@@ -102,7 +175,8 @@ export default function StrategyWorkbench({
       }>("/strategy-editor/validate", {
         ...query,
         config,
-        custom_strategy: value,
+        custom_strategy: fileName ? null : value,
+        strategy_file: fileName,
       });
       setMessage(
         `${result.message} · ${result.rows} 根 K 线 · BUY ${result.signal_counts.BUY ?? 0} / SELL ${result.signal_counts.SELL ?? 0}`,
@@ -110,54 +184,29 @@ export default function StrategyWorkbench({
       setPreview(result.examples);
     });
   const modified = savedContent !== JSON.stringify(value);
-  const current = library.find((s) => s.definition_id === parent);
-  const remove = () => {
-    if (!deleteTarget) return;
-    const target = deleteTarget;
-    void perform(async () => {
-      await api(
-        `/strategy-editor/definitions/${target.definition_id}/delete`,
-        {},
-      );
-      setLibrary((items) =>
-        items.filter((s) => s.definition_id !== target.definition_id),
-      );
-      setDeleteTarget(null);
-      if (parent === target.definition_id) {
-        setParent(null);
-        setRevision(null);
-        setSavedContent("");
-      }
-      setMessage(
-        `已删除「${target.name} · V${target.revision}」。当前内容保留为草稿，历史回测不受影响。`,
-      );
-    });
-  };
+  const activeValue = fileName && fileDefinition ? fileDefinition : value;
   return (
     <fieldset disabled={disabled || localBusy} className="strategy-workbench">
       <div className="workbench-header">
         <div>
           <strong>
-            {value.name ||
-              (value.kind === "rules" ? "规则策略" : "Python 策略")}
+            {fileName ? fileDefinition?.name ?? fileName : value.name || "Python 策略"}
           </strong>
           <span>
-            {revision
+            {fileName ? `文件策略 · strategy/${fileName}${revision ? ` · 已存 V${revision}` : ""}` : revision
               ? `V${revision}${modified ? " · 已修改" : " · 已保存"}`
               : "未保存草稿"}{" "}
-            · 草稿自动保存在此浏览器
+            {fileName ? " · 运行时读取最新文件" : " · 草稿自动保存在此浏览器"}
           </span>
         </div>
         <div className="workbench-library-actions">
           <select
             aria-label="载入我的策略"
-            value={parent ?? ""}
+            value={fileName ? "" : parent ?? ""}
             onChange={(e) => load(e.target.value)}
           >
-            <option value="">当前草稿 · 选择已保存策略</option>
-            {library
-              .filter((s) => s.kind === value.kind)
-              .map((s) => (
+            <option value="" disabled>选择已保存策略</option>
+            {library.filter((s) => s.kind === "python").map((s) => (
                 <option key={s.definition_id} value={s.definition_id}>
                   {s.name} · V{s.revision}
                 </option>
@@ -168,41 +217,53 @@ export default function StrategyWorkbench({
             aria-expanded={editing}
             aria-controls="strategy-editing-content"
           >
-            {editing ? "收起编辑器" : "编辑策略"}
-          </button>
-          <button
-            disabled={!current}
-            onClick={() => current && setDeleteTarget(current)}
-            title="删除当前载入的策略版本"
-          >
-            删除版本
+            {editing ? "收起编辑器" : fileName ? "查看文件代码" : "编辑策略"}
           </button>
         </div>
       </div>
-      {!editing && (
-        <p className="strategy-compact-description">
-          {value.description ||
-            "选择已保存策略后可直接运行回测，修改规则或代码请展开编辑。"}
-        </p>
-      )}
-      {deleteTarget && (
-        <div
-          className="strategy-delete-confirm"
-          role="alertdialog"
-          aria-label="确认删除策略版本"
-        >
-          <strong>
-            删除「{deleteTarget.name} · V{deleteTarget.revision}」？
-          </strong>
-          <p>
-            该版本将从策略列表移除，其他版本和历史回测保留。当前编辑内容保留为草稿。
-          </p>
-          {modified && <p>当前有未保存的修改，删除后仍会保留在草稿中。</p>}
-          <button onClick={() => setDeleteTarget(null)}>取消</button>
-          <button onClick={remove}>确认删除此版本</button>
+      {value.kind === "python" && (
+        <div className="strategy-file-picker">
+          <label>
+            VS Code 文件策略
+            <select
+              aria-label="选择 strategy 文件夹中的策略"
+              value={fileName ?? ""}
+              onChange={(e) => selectFile(e.target.value || null)}
+            >
+              <option value="">在线编辑器草稿</option>
+              {files.map((file) => (
+                <option key={file.filename} value={file.filename}>
+                  {file.filename}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button onClick={refreshFiles}>刷新文件列表与预览</button>
+          {fileName && (
+            <button onClick={saveFile} disabled={!fileDefinition}>
+              {parent ? "保存文件新版本" : "保存文件到策略库"}
+            </button>
+          )}
+          <span>放入项目的 strategy 文件夹；校验和回测每次读取最新文件。</span>
         </div>
       )}
-      {editing && (
+      {!editing && (
+        <p className="strategy-compact-description">
+          {activeValue.description ||
+            "选择已保存策略后可直接运行回测，修改代码请展开编辑。"}
+        </p>
+      )}
+      {editing && fileName && (
+        <div id="strategy-editing-content" className="strategy-file-preview">
+          <p>在 VS Code 修改 strategy/{fileName}。此处显示上次读取的代码；点击“刷新文件列表与预览”查看最新内容。</p>
+          <pre className="code-editor">{fileDefinition?.code ?? "正在读取文件…"}</pre>
+          <div className="workbench-actions">
+            <button onClick={validate} disabled={!hasBars}>校验策略与信号</button>
+            <span>{hasBars ? "校验时读取最新文件。" : "先下载或读取本地行情。"}</span>
+          </div>
+        </div>
+      )}
+      {editing && !fileName && (
         <div id="strategy-editing-content">
           <div className="strategy-meta">
             <label>
@@ -227,15 +288,11 @@ export default function StrategyWorkbench({
               />
             </label>
           </div>
-          {value.kind === "rules" ? (
-            <RuleEditor value={value} onChange={onChange} />
-          ) : (
-            <PythonEditor
-              value={value}
-              onChange={onChange}
-              examples={examples}
-            />
-          )}
+          <PythonEditor
+            value={value}
+            onChange={onChange}
+            examples={examples}
+          />
           <div className="workbench-actions">
             <button
               onClick={validate}

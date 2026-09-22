@@ -44,3 +44,10 @@ class BacktestRequest(DataRequest):
     parameters: dict[str, int | float] = Field(default_factory=dict)
     config: BacktestConfig = Field(default_factory=BacktestConfig)
     custom_strategy: StrategyDefinition | None = None
+    strategy_file: str | None = None
+
+    @model_validator(mode="after")
+    def one_custom_source(self):
+        if self.custom_strategy is not None and self.strategy_file is not None:
+            raise ValueError("文件策略和在线策略只能选择一种")
+        return self

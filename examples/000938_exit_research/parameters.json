@@ -1,0 +1,13 @@
+{
+  "momentum_ema": 5,
+  "trend_ema": 20,
+  "trend_slope": 3,
+  "breakout_period": 5,
+  "atr_period": 14,
+  "max_entry_atr": 2.0,
+  "trailing_atr": 3.0,
+  "exit_confirm": 2,
+  "cooldown_bars": 3,
+  "profit_arm_atr": 2.0,
+  "profit_trailing_atr": 1.5
+}

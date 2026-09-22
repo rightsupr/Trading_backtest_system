@@ -8,6 +8,7 @@ import {
   Database,
   FlaskConical,
   History,
+  Library,
   Play,
   RefreshCw,
   Settings2,
@@ -17,9 +18,10 @@ import EquityChart from "../charts/EquityChart";
 import Metrics from "../components/Metrics";
 import TradeTable from "../components/TradeTable";
 import ExperimentManager from "../components/ExperimentManager";
+import StrategyManager from "../components/StrategyManager";
 import StrategyWorkbench from "../components/StrategyWorkbench";
 import Watchlist from "../components/Watchlist";
-import { defaultRules, defaultPython, readDraft } from "../types/strategy";
+import { defaultPython, readDraft } from "../types/strategy";
 import type { StrategyDefinition, StrategyMode } from "../types/strategy";
 import { api, money, percent } from "../services/api";
 import { chooseSavedStock } from "../services/stockSelection";
@@ -72,6 +74,8 @@ export default function Research() {
   const [bars, setBars] = useState<Bar[]>([]);
   const [run, setRun] = useState<Run | null>(null);
   const [showExperiments, setShowExperiments] = useState(false);
+  const [showStrategies, setShowStrategies] = useState(false);
+  const [deletedStrategyIds, setDeletedStrategyIds] = useState<string[]>([]);
   const [history, setHistory] = useState<RunSummary[]>([]);
   const [selected, setSelected] = useState<Trade | null>(null);
   const [fill, setFill] = useState<Fill | null>(null);
@@ -82,23 +86,19 @@ export default function Research() {
   const [advanced, setAdvanced] = useState(false);
   const [online, setOnline] = useState(false);
   const [mode, setMode] = useState<StrategyMode>("builtin");
-  const [ruleDraft, setRuleDraft] = useState(() =>
-    readDraft("quant.rules.v1", defaultRules),
-  );
   const [pythonDraft, setPythonDraft] = useState(() =>
     readDraft("quant.python.v1", defaultPython),
   );
+  const [strategyFile, setStrategyFile] = useState<string | null>(null);
   const [editorKey, setEditorKey] = useState(0);
-  const custom =
-    mode === "rules" ? ruleDraft : mode === "python" ? pythonDraft : null;
+  const custom = mode === "python" ? pythonDraft : null;
   useEffect(() => {
     try {
-      localStorage.setItem("quant.rules.v1", JSON.stringify(ruleDraft));
       localStorage.setItem("quant.python.v1", JSON.stringify(pythonDraft));
     } catch {
       setError("浏览器草稿存储不可用，请使用「保存策略」保存到本地数据库");
     }
-  }, [ruleDraft, pythonDraft]);
+  }, [pythonDraft]);
 
   useEffect(() => {
     let cancelled = false;
@@ -256,7 +256,8 @@ export default function Research() {
         strategy_name: strategy,
         parameters,
         config,
-        custom_strategy: custom,
+        custom_strategy: strategyFile && mode === "python" ? null : custom,
+        strategy_file: mode === "python" ? strategyFile : null,
       });
       setRun(result);
       setSelected(null);
@@ -277,10 +278,11 @@ export default function Research() {
         adjust: r.adjust,
       });
       if (r.custom_strategy) {
+        setStrategyFile(null);
         setMode(r.custom_strategy.kind);
-        if (r.custom_strategy.kind === "rules") setRuleDraft(r.custom_strategy);
-        else setPythonDraft(r.custom_strategy);
+        if (r.custom_strategy.kind === "python") setPythonDraft(r.custom_strategy);
       } else {
+        setStrategyFile(null);
         setMode("builtin");
         setStrategy(r.strategy_name);
         setParameters(r.parameters);
@@ -292,7 +294,9 @@ export default function Research() {
       setSelected(null);
       setFill(null);
       setNotice(
-        `历史回测 · ${new Date(result.created_at).toLocaleString("zh-CN")} · 使用保存的行情快照`,
+        r.custom_strategy?.kind === "rules"
+          ? "已读取旧规则策略的历史回测；规则编辑器已移除，可切换到内置或 Python 策略继续研究。"
+          : `历史回测 · ${new Date(result.created_at).toLocaleString("zh-CN")} · 使用保存的行情快照`,
       );
     });
   };
@@ -309,8 +313,7 @@ export default function Research() {
   };
   const chartBars = run?.bars ?? bars;
   const editCustom = (definition: StrategyDefinition) => {
-    if (definition.kind === "rules") setRuleDraft(definition);
-    else setPythonDraft(definition);
+    if (definition.kind === "python") setPythonDraft(definition);
     clearRun();
   };
   const chooseTrade = (trade: Trade) => {
@@ -384,6 +387,10 @@ export default function Research() {
               >
                 <Database size={16} />
                 实验记录管理
+              </button>
+              <button disabled={!!busy} onClick={() => setShowStrategies(true)}>
+                <Library size={16} />
+                策略管理
               </button>
               <label className="history-select">
                 <History size={16} />
@@ -494,8 +501,7 @@ export default function Research() {
                   {(
                     [
                       ["builtin", "内置策略"],
-                      ["rules", "规则编辑器"],
-                      ["python", "Python 编辑器"],
+                      ["python", "Python / 文件策略"],
                     ] as const
                   ).map(([key, label]) => (
                     <button
@@ -574,7 +580,8 @@ export default function Research() {
                   disabled={
                     !chartBars.length ||
                     !!busy ||
-                    (mode === "python" && !pythonDraft.code.trim())
+                    mode === "rules" ||
+                    (mode === "python" && !strategyFile && !pythonDraft.code.trim())
                   }
                 >
                   <Play size={15} fill="currentColor" />
@@ -608,15 +615,26 @@ export default function Research() {
                   </span>
                 </div>
               )}
+              {mode === "rules" && (
+                <p className="builtin-explanation">
+                  这是旧规则策略的历史回测。请选择内置策略或 Python / 文件策略开始新的回测。
+                </p>
+              )}
               {custom && (
                 <StrategyWorkbench
                   key={`${mode}-${editorKey}`}
                   value={custom}
                   onChange={editCustom}
+                  fileName={mode === "python" ? strategyFile : null}
+                  onFileChange={(filename) => {
+                    setStrategyFile(filename);
+                    clearRun();
+                  }}
                   query={query}
                   config={config}
                   hasBars={!!chartBars.length}
                   disabled={!!busy}
+                  deletedIds={deletedStrategyIds}
                 />
               )}
               {advanced && (
@@ -869,6 +887,12 @@ export default function Research() {
           </footer>
         </main>
       </div>
+      {showStrategies && (
+        <StrategyManager
+          onClose={() => setShowStrategies(false)}
+          onDeleted={setDeletedStrategyIds}
+        />
+      )}
       {showExperiments && (
         <ExperimentManager
           onClose={() => setShowExperiments(false)}

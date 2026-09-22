@@ -78,3 +78,7 @@ class StrategyDefinition(StrictModel):
 class SaveStrategyRequest(StrictModel):
     definition: StrategyDefinition
     parent_id: str | None = None
+
+
+class DeleteStrategiesRequest(StrictModel):
+    definition_ids: list[str] = Field(min_length=1)

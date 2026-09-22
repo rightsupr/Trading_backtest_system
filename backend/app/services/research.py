@@ -8,9 +8,16 @@ from app.backtest.engine import BacktestEngine
 from app.indicators.technical import chart_indicators
 from app.services.custom_strategies import custom_signals, definition_hash
 from app.services.serialization import clean, records
+from app.services.strategy_files import load_strategy_file
 from app.strategies import STRATEGIES
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_strategy_file(request):
+    if request.strategy_file is None:
+        return request
+    return request.model_copy(update={"custom_strategy": load_strategy_file(request.strategy_file)})
 
 
 def prepare_research(repository, request):
@@ -40,6 +47,7 @@ def prepare_research(repository, request):
 
 def run_research(repository, request):
     logger.info("Backtest started %s %s", request.symbol, request.strategy_name)
+    request = resolve_strategy_file(request)
     prepared, signals, params, version, name = prepare_research(repository, request)
     result = BacktestEngine().run(request.symbol, prepared, signals, request.config)
     payload = request.model_dump(mode="json")

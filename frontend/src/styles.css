@@ -1445,6 +1445,31 @@ tbody tr.selected td {
   max-height: 3.2em;
   overflow: hidden;
 }
+.strategy-file-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 9px;
+  margin-top: 14px;
+}
+.strategy-file-picker label {
+  display: grid;
+  gap: 5px;
+  font-size: 11px;
+  color: #718291;
+}
+.strategy-file-picker select {
+  min-width: 220px;
+}
+.strategy-file-picker > span,
+.strategy-file-preview > p {
+  font-size: 11px;
+  line-height: 1.7;
+  color: #718291;
+}
+.strategy-file-preview > p {
+  margin: 16px 0 8px;
+}
 .strategy-delete-confirm {
   margin-top: 14px;
   padding: 16px;

@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from app.models.schemas import BacktestRequest
-from app.models.strategy import SaveStrategyRequest
+from app.models.strategy import DeleteStrategiesRequest, SaveStrategyRequest
 from app.services.custom_strategies import definition_hash, validate_definition
-from app.services.research import prepare_research
+from app.services.research import prepare_research, resolve_strategy_file
 from app.services.serialization import records
+from app.services.strategy_files import list_strategy_files, load_strategy_file
 from app.strategies.templates import PYTHON_EXAMPLES
 
 router = APIRouter(prefix="/api/strategy-editor", tags=["strategy-editor"])
@@ -13,6 +14,16 @@ router = APIRouter(prefix="/api/strategy-editor", tags=["strategy-editor"])
 @router.get("/examples")
 def examples():
     return PYTHON_EXAMPLES
+
+
+@router.get("/files")
+def files():
+    return list_strategy_files()
+
+
+@router.get("/files/{filename}")
+def file_definition(filename: str):
+    return load_strategy_file(filename)
 
 
 @router.get("/definitions")
@@ -26,6 +37,11 @@ def save_definition(body: SaveStrategyRequest, request: Request):
     return request.app.state.repo.save_definition(
         body.definition.model_dump(), definition_hash(body.definition), body.parent_id
     )
+
+
+@router.post("/definitions/delete")
+def delete_definitions(body: DeleteStrategiesRequest, request: Request):
+    return request.app.state.repo.delete_definitions(body.definition_ids)
 
 
 @router.get("/definitions/{definition_id}")
@@ -45,6 +61,7 @@ def delete_definition(definition_id: str, request: Request):
 
 @router.post("/validate")
 def validate_strategy(body: BacktestRequest, request: Request):
+    body = resolve_strategy_file(body)
     if body.custom_strategy is None:
         raise ValueError("请选择规则或 Python 策略后再校验")
     _, signals, _, version, _ = prepare_research(request.app.state.repo, body)

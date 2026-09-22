@@ -293,13 +293,24 @@ class Repository:
         ]
 
     def delete_definition(self, identifier: str) -> bool:
+        return bool(self.delete_definitions([identifier])["deleted_ids"])
+
+    def delete_definitions(self, identifiers: list[str]) -> dict[str, list[str]]:
         # Retain revision numbers and archived content; saved runs own independent snapshots.
+        identifiers = list(dict.fromkeys(identifiers))
+        if not identifiers:
+            return {"deleted_ids": [], "missing_ids": []}
+        placeholders = ", ".join("?" for _ in identifiers)
         with self.connection() as conn:
-            return (
-                conn.execute(
-                    "UPDATE strategy_definitions SET deleted=true WHERE definition_id=? AND deleted=false "
-                    "RETURNING definition_id",
-                    [identifier],
-                ).fetchone()
-                is not None
-            )
+            deleted = {
+                row[0]
+                for row in conn.execute(
+                    f"UPDATE strategy_definitions SET deleted=true WHERE definition_id IN ({placeholders}) "
+                    "AND deleted=false RETURNING definition_id",
+                    identifiers,
+                ).fetchall()
+            }
+        return {
+            "deleted_ids": [identifier for identifier in identifiers if identifier in deleted],
+            "missing_ids": [identifier for identifier in identifiers if identifier not in deleted],
+        }

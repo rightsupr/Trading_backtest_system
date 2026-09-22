@@ -13,6 +13,71 @@ from app.strategies.rules import generate_rule_signals, operand_series
 from app.strategies.templates import PYTHON_EXAMPLES
 
 
+def test_file_strategy_uses_latest_code_and_keeps_run_snapshot(tmp_path, monkeypatch):
+    from app.services import strategy_files
+
+    folder = tmp_path / "strategy"
+    folder.mkdir()
+    monkeypatch.setattr(strategy_files, "STRATEGY_DIR", folder)
+    source = folder / "my_strategy.py"
+
+    def write_strategy(reason):
+        source.write_text(
+            "import pandas as pd\n"
+            "def generate_signals(data, params):\n"
+            f"    return pd.DataFrame([{{'date': day, 'signal': 'NONE', 'position_target': 0, 'reason': '{reason}'}} for day in data.date])\n",
+            encoding="utf-8",
+        )
+
+    write_strategy("first")
+    body = {
+        "symbol": "000938", "source": "sample", "start_date": "2023-01-01",
+        "end_date": "2023-04-30", "strategy_file": source.name,
+    }
+    with TestClient(create_app(tmp_path / "files.duckdb", start_scheduler=False)) as client:
+        assert client.get("/api/strategy-editor/files").json() == [
+            {"filename": source.name, "name": source.stem}
+        ]
+        assert "first" in client.get(f"/api/strategy-editor/files/{source.name}").json()["code"]
+        assert client.post(
+            "/api/data/download", json={key: value for key, value in body.items() if key != "strategy_file"}
+        ).status_code == 200
+        validation = client.post("/api/strategy-editor/validate", json=body)
+        assert validation.status_code == 200, validation.text
+        first = client.post("/api/backtest", json=body)
+        assert first.status_code == 200, first.text
+        first = first.json()
+        assert "first" in first["request"]["custom_strategy"]["code"]
+        write_strategy("second")
+        second = client.post("/api/backtest", json=body)
+        assert second.status_code == 200, second.text
+        second = second.json()
+        assert "second" in second["request"]["custom_strategy"]["code"]
+        assert second["strategy_version"] != first["strategy_version"]
+        assert client.get(f"/api/backtest/{first['run_id']}").json() == first
+        file_copy = client.get(f"/api/strategy-editor/files/{source.name}").json()
+        saved = client.post(
+            "/api/strategy-editor/definitions", json={"definition": file_copy}
+        )
+        assert saved.status_code == 200, saved.text
+        saved = saved.json()
+        assert saved["revision"] == 1
+        write_strategy("third")
+        assert "second" in client.get(
+            f"/api/strategy-editor/definitions/{saved['definition_id']}"
+        ).json()["definition"]["code"]
+        assert client.post(
+            f"/api/strategy-editor/definitions/{saved['definition_id']}/delete", json={}
+        ).status_code == 200
+        assert source.is_file()
+        assert client.get("/api/strategy-editor/definitions").json() == []
+        assert client.post("/api/backtest", json={**body, "strategy_file": "../secret.py"}).status_code == 422
+        assert client.post("/api/backtest", json={**body, "strategy_file": "missing.py"}).status_code == 422
+        assert client.post(
+            "/api/backtest", json={**body, "custom_strategy": python_definition()}
+        ).status_code == 422
+
+
 def rules_definition():
     return {
         "kind": "rules",
@@ -282,3 +347,48 @@ def test_strategy_deletion_migrates_old_database(tmp_path):
     assert restored.get_definition(first["definition_id"]) == first
     assert restored.delete_definition(first["definition_id"])
     assert restored.list_definitions() == []
+
+
+def test_batch_strategy_deletion_keeps_unselected_versions_files_and_history(tmp_path, monkeypatch):
+    from app.services import strategy_files
+
+    folder = tmp_path / "strategy"
+    folder.mkdir()
+    source = folder / "test_strategy.py"
+    source.write_text(PYTHON_EXAMPLES[0]["code"], encoding="utf-8")
+    monkeypatch.setattr(strategy_files, "STRATEGY_DIR", folder)
+    path = tmp_path / "batch-delete.duckdb"
+    prefix = "/api/strategy-editor/definitions"
+    with TestClient(create_app(path, start_scheduler=False)) as client:
+        definition = client.get("/api/strategy-editor/files/test_strategy.py").json()
+        first = client.post(prefix, json={"definition": definition}).json()
+        second = client.post(
+            prefix, json={"definition": definition, "parent_id": first["definition_id"]}
+        ).json()
+        legacy = client.post(prefix, json={"definition": rules_definition()}).json()
+        query = {"symbol": "000938", "source": "sample", "start_date": "2023-01-01", "end_date": "2023-04-30"}
+        assert client.post("/api/data/download", json=query).status_code == 200
+        run = client.post("/api/backtest", json={**query, "custom_strategy": definition})
+        assert run.status_code == 200, run.text
+        snapshot = run.json()
+        body = {"definition_ids": [first["definition_id"], legacy["definition_id"], first["definition_id"], "missing"]}
+        assert client.post(f"{prefix}/delete", json={"definition_ids": []}).status_code == 422
+        assert client.post(
+            f"{prefix}/delete", json=body, headers={"origin": "https://untrusted.example"}
+        ).status_code == 403
+        assert len(client.get(prefix).json()) == 3
+        response = client.post(f"{prefix}/delete", json=body)
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "deleted_ids": [first["definition_id"], legacy["definition_id"]],
+            "missing_ids": ["missing"],
+        }
+        assert [item["definition_id"] for item in client.get(prefix).json()] == [second["definition_id"]]
+        assert client.get(f"{prefix}/{first['definition_id']}").status_code == 404
+        assert client.get(f"/api/backtest/{snapshot['run_id']}").json() == snapshot
+        assert source.read_text(encoding="utf-8") == definition["code"]
+        repeated = client.post(f"{prefix}/delete", json=body).json()
+        assert repeated["deleted_ids"] == []
+        assert len(repeated["missing_ids"]) == 3
+    with TestClient(create_app(path, start_scheduler=False)) as client:
+        assert [item["definition_id"] for item in client.get(prefix).json()] == [second["definition_id"]]

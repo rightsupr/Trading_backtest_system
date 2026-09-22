@@ -44,6 +44,10 @@ export interface PythonExample {
   code: string;
   parameters: Record<string, number>;
 }
+export interface StrategyFile {
+  filename: string;
+  name: string;
+}
 
 export const operand = (
   feature = "close",
