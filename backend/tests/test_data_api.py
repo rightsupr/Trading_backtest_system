@@ -176,3 +176,24 @@ def test_provider_error_does_not_delete_existing_data(repository, sample_bars):
             )
         )
     assert repository.bounds("000938", "qfq", "sample")[0] == sample_bars.date.min()
+
+
+def test_execution_modes_saved_and_old_snapshots_preserved(tmp_path):
+    with TestClient(create_app(tmp_path / "timing.duckdb", start_scheduler=False)) as client:
+        body = {"symbol": "000938", "start_date": "2023-01-01", "end_date": "2024-01-01", "source": "sample"}
+        assert client.get("/api/config").json()["execution_timing"] == "execute_same_close"
+        assert client.post("/api/data/download", json=body).status_code == 200
+        old_response = client.post("/api/backtest", json={
+            **body, "config": {"execution_timing": "execute_next_open"},
+        })
+        assert old_response.status_code == 200, old_response.text
+        old = old_response.json()
+        response = client.post("/api/backtest", json=body)
+        assert response.status_code == 200, response.text
+        new = response.json()
+        assert new["request"]["config"]["execution_timing"] == "execute_same_close"
+        assert new["fills"] and all(f["date"] == f["signal_date"] for f in new["fills"])
+        assert old["fills"] and all(f["date"] > f["signal_date"] for f in old["fills"])
+        assert any("尾盘近似" in warning for warning in new["warnings"])
+        assert client.get(f"/api/backtest/{old['run_id']}").json() == old
+        assert client.get(f"/api/backtest/{new['run_id']}").json() == new

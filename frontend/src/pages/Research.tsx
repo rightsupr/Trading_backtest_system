@@ -54,6 +54,8 @@ const defaultQuery: Query = {
   adjust: "qfq",
 };
 const defaultConfig: Config = {
+  signal_timing: "signal_at_close",
+  execution_timing: "execute_same_close",
   initial_cash: 100000,
   commission_rate: 0.0003,
   minimum_commission: 5,
@@ -255,7 +257,7 @@ export default function Research() {
         ...query,
         strategy_name: strategy,
         parameters,
-        config,
+        config: { ...config, signal_timing: "signal_at_close", execution_timing: "execute_same_close" },
         custom_strategy: strategyFile && mode === "python" ? null : custom,
         strategy_file: mode === "python" ? strategyFile : null,
       });
@@ -288,7 +290,7 @@ export default function Research() {
         setParameters(r.parameters);
       }
       setEditorKey((key) => key + 1);
-      setConfig(r.config);
+      setConfig({ ...r.config, signal_timing: "signal_at_close", execution_timing: "execute_same_close" });
       setRun(result);
       setBars(result.bars);
       setSelected(null);
@@ -296,7 +298,7 @@ export default function Research() {
       setNotice(
         r.custom_strategy?.kind === "rules"
           ? "已读取旧规则策略的历史回测；规则编辑器已移除，可切换到内置或 Python 策略继续研究。"
-          : `历史回测 · ${new Date(result.created_at).toLocaleString("zh-CN")} · 使用保存的行情快照`,
+          : `历史回测 · ${new Date(result.created_at).toLocaleString("zh-CN")} · ${r.config.execution_timing === "execute_same_close" ? "当日收盘撮合" : "旧口径：次日开盘撮合"} · 使用保存的行情快照；重新运行将按当日收盘撮合`,
       );
     });
   };
@@ -572,7 +574,7 @@ export default function Research() {
                   撮合设置
                 </button>
                 <span className="execution-badge">
-                  收盘信号 <ArrowRight size={12} /> 次日开盘
+                  尾盘信号 <ArrowRight size={12} /> 当日收盘
                 </span>
                 <button
                   className="primary run-button"
@@ -611,7 +613,7 @@ export default function Research() {
                     </>
                   )}
                   <span>
-                    上穿要求昨日在下方或相等、今日在上方；所有信号收盘确认，下一交易日开盘执行。
+                    上穿要求昨日在下方或相等、今日在上方；当日信号按当日收盘价加减滑点成交。
                   </span>
                 </div>
               )}
@@ -637,10 +639,16 @@ export default function Research() {
                   deletedIds={deletedStrategyIds}
                 />
               )}
+              <p className="execution-note">
+                尾盘近似：用完整日线代替临近收盘的数据，实际成交可能与收盘价不同。
+                {run && run.request.config.execution_timing !== "execute_same_close" && (
+                  <strong> 当前展示的是次日开盘撮合的历史结果，重新运行后更新为尾盘口径。</strong>
+                )}
+              </p>
               {advanced && (
                 <div className="advanced-settings">
                   {Object.entries(config)
-                    .filter(([key]) => key in defaultConfig)
+                    .filter(([key, value]) => key in defaultConfig && typeof value === "number")
                     .map(([key, value]) => (
                       <label key={key}>
                         {

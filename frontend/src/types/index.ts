@@ -27,6 +27,8 @@ export interface WatchlistData {
   target_date: string;
 }
 export interface Config {
+  signal_timing?: "signal_at_close";
+  execution_timing?: "execute_same_close" | "execute_next_open";
   initial_cash: number;
   commission_rate: number;
   minimum_commission: number;

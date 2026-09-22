@@ -2138,3 +2138,15 @@ tbody tr.selected td {
   white-space: nowrap;
   pointer-events: none;
 }
+
+.execution-note {
+  margin: 0;
+  padding: 10px 22px;
+  color: #78879b;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.execution-note strong {
+  color: #a66c30;
+  font-weight: 500;
+}

@@ -25,12 +25,17 @@ class BacktestEngine:
         position = None
         pending = None
         trades, equity, fills, rejected = [], [], [], []
+        same_close = config.execution_timing == "execute_same_close"
+        price_field = "close" if same_close else "open"
         for i, bar in enumerate(bars.to_dict("records")):
-            # Only yesterday's close signal is visible to today's opening auction.
-            if i > 0:
-                previous = signals.iloc[i - 1]
-                if previous.signal in ("BUY", "SELL"):
-                    pending = previous.to_dict()
+            # A position carried into today experiences the full session before a close exit.
+            if same_close and position:
+                self._excursion(position, bar["high"], bar["low"], bar["close"])
+            signal_index = i if same_close else i - 1
+            if signal_index >= 0:
+                current_signal = signals.iloc[signal_index]
+                if current_signal.signal in ("BUY", "SELL"):
+                    pending = current_signal.to_dict()
             if pending:
                 side = pending["signal"]
                 actionable = (side == "BUY" and shares == 0) or (side == "SELL" and shares > 0)
@@ -41,7 +46,7 @@ class BacktestEngine:
                     if not allowed:
                         rejected.append({"date": bar["date"], "side": side, "reason": explanation})
                     elif side == "BUY":
-                        price = bar["open"] * (1 + config.slippage)
+                        price = bar[price_field] * (1 + config.slippage)
                         quantity = affordable_shares(cash, price, config)
                         if quantity == 0:
                             rejected.append(
@@ -70,7 +75,7 @@ class BacktestEngine:
                             fills.append(self._fill(bar, pending, price, quantity, position["trade_id"]))
                             pending = None
                     else:
-                        price = bar["open"] * (1 - config.slippage)
+                        price = bar[price_field] * (1 - config.slippage)
                         fee = commission(shares * price, config)
                         tax = round(shares * price * config.stamp_tax_rate, 2)
                         cash += shares * price - fee - tax
@@ -80,7 +85,11 @@ class BacktestEngine:
                         fills.append(self._fill(bar, pending, price, shares, position["trade_id"]))
                         position, shares, pending = None, 0, None
             if position:
-                self._excursion(position, bar["high"], bar["low"], bar["close"])
+                if not same_close:
+                    self._excursion(position, bar["high"], bar["low"], bar["close"])
+                elif position["entry_index"] == i:
+                    # Do not attribute intraday moves before a close entry to this trade.
+                    self._excursion(position, bar["close"], bar["close"], bar["close"])
             total = cash + shares * bar["close"]
             peak = max(peak, total)
             equity.append(

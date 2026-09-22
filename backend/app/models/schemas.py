@@ -36,7 +36,7 @@ class BacktestConfig(StrictModel):
     stamp_tax_rate: float = Field(default=0.0005, ge=0, le=0.1)
     slippage: float = Field(default=0.001, ge=0, lt=0.1)
     signal_timing: Literal["signal_at_close"] = "signal_at_close"
-    execution_timing: Literal["execute_next_open"] = "execute_next_open"
+    execution_timing: Literal["execute_same_close", "execute_next_open"] = "execute_same_close"
 
 
 class BacktestRequest(DataRequest):

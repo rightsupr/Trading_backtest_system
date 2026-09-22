@@ -64,7 +64,18 @@ def run_research(repository, request):
             "signals": records(signals),
             "chart_series": signals.attrs.get("chart_series", []),
             "data_hash": hashlib.sha256(json.dumps(snapshot).encode()).hexdigest(),
-            "warnings": [
+            "warnings": (
+                [
+                    (
+                        "尾盘近似：使用当日完整日线生成信号，以当日收盘价加减滑点撮合；"
+                        "最终收盘价和全天成交量在尾盘决策时尚未完全确定，可能高估可实现表现。"
+                        "精确模拟临近收盘的决策与成交需要分钟或逐笔数据。"
+                    )
+                ]
+                if request.config.execution_timing == "execute_same_close"
+                else []
+            )
+            + [
                 "复权价格用于研究撮合，未独立核算分红送转与历史印花税变化。",
                 "不模拟涨跌停封单和市场冲击；停牌订单延后，期末持仓按收盘计价。",
             ],

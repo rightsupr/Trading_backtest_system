@@ -315,7 +315,7 @@ export default function PriceChart({
         <span className="empty-candles">▂ ▆ ▄ █ ▅ ▇ ▃</span>
         <h3>从一只股票，开始一次研究</h3>
         <p>选择日期并下载历史行情，K 线与技术指标将在这里呈现。</p>
-        <span>本地存储 · 次日开盘撮合 · 逐笔交易复盘</span>
+        <span>本地存储 · 当日收盘撮合 · 逐笔交易复盘</span>
       </div>
     );
   return (

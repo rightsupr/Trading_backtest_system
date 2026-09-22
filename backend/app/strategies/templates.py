@@ -11,7 +11,7 @@ PYTHON_EXAMPLES = [
             from app.indicators.technical import sma
 
             def generate_signals(data, params):
-                """data 按日期递增；输出逐日信号，系统负责次日开盘成交。"""
+                """data 按日期递增；输出逐日信号，系统默认按当日收盘价加减滑点成交（尾盘近似）。"""
                 fast = int(params.get("fast_ma", 5))
                 slow = int(params.get("slow_ma", 20))
                 if not 0 < fast < slow:

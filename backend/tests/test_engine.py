@@ -7,7 +7,7 @@ from app.models.schemas import BacktestConfig
 
 def run(prices, actions, **config):
     bars = make_bars(prices)
-    return BacktestEngine().run("000938", bars, make_signals(bars, actions), BacktestConfig(**config))
+    return BacktestEngine().run("000938", bars, make_signals(bars, actions), BacktestConfig(**{"execution_timing": "execute_next_open", **config}))
 
 
 def test_next_open_fees_and_trade_accounting():
@@ -65,7 +65,7 @@ def test_exit_day_high_low_are_not_used():
     bars = make_bars([10.0, 10.0, 11.0])
     bars.loc[2, ["high", "low", "close"]] = [100, 1, 90]
     result = BacktestEngine().run(
-        "000938", bars, make_signals(bars, ["BUY", "SELL", "NONE"]), BacktestConfig(slippage=0)
+        "000938", bars, make_signals(bars, ["BUY", "SELL", "NONE"]), BacktestConfig(slippage=0, execution_timing="execute_next_open")
     )
     assert result["trades"][0]["MFE"] == pytest.approx(0.1)
     assert result["trades"][0]["MAE"] == 0
@@ -75,7 +75,7 @@ def test_suspension_delays_order():
     bars = make_bars([10.0, 11.0, 12.0, 13.0])
     bars.loc[1, "volume"] = 0
     result = BacktestEngine().run(
-        "000938", bars, make_signals(bars, ["BUY", "HOLD", "SELL", "NONE"]), BacktestConfig(slippage=0)
+        "000938", bars, make_signals(bars, ["BUY", "HOLD", "SELL", "NONE"]), BacktestConfig(slippage=0, execution_timing="execute_next_open")
     )
     assert result["trades"][0]["entry_price"] == 12
     assert len(result["rejected_orders"]) == 1
