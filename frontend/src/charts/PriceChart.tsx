@@ -145,34 +145,52 @@ export default function PriceChart({
     );
     for (const plot of visiblePlots) {
       const pane = plot.pane === "price" ? 0 : paneNames.indexOf(plot.pane) + 1;
-      const series = chart.addSeries(
-        plot.kind === "histogram" ? HistogramSeries : LineSeries,
-        {
-          color: plot.color,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          lineWidth: 1,
-          priceFormat:
-            plot.format === "volume"
-              ? { type: "volume" }
-              : { type: "price", precision: 3, minMove: 0.001 },
-        },
-        pane,
-      );
-      series.setData(
-        bars.map((b, i) => {
-          const value = plot.values[i];
-          if (value == null || !Number.isFinite(value)) return { time: b.date };
-          const sign = plot.key === "volume" ? b.close - b.open : value;
-          return {
-            time: b.date,
-            value,
-            ...(plot.kind === "histogram"
-              ? { color: sign >= 0 ? "#d75d6299" : `${plot.color}99` }
-              : {}),
-          };
-        }),
-      );
+      const points = bars.map((b, i) => {
+        const value = plot.values[i];
+        if (value == null || !Number.isFinite(value)) return { time: b.date };
+        const sign = plot.key === "volume" ? b.close - b.open : value;
+        return {
+          time: b.date,
+          value,
+          ...(plot.kind === "histogram"
+            ? { color: sign >= 0 ? "#d75d6299" : `${plot.color}99` }
+            : {}),
+        };
+      });
+      // A line series connects across whitespace. Separate valid spans so a
+      // position-only protection line cannot bridge unrelated trades.
+      const segments: (typeof points)[] = [];
+      if (plot.kind === "histogram") {
+        segments.push(points);
+      } else {
+        let segment: typeof points = [];
+        for (const point of points) {
+          if (!("value" in point)) {
+            if (segment.length) segments.push(segment);
+            segment = [];
+          } else {
+            segment.push(point);
+          }
+        }
+        if (segment.length) segments.push(segment);
+      }
+      for (const segment of segments) {
+        const series = chart.addSeries(
+          plot.kind === "histogram" ? HistogramSeries : LineSeries,
+          {
+            color: plot.color,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            lineWidth: 1,
+            priceFormat:
+              plot.format === "volume"
+                ? { type: "volume" }
+                : { type: "price", precision: 3, minMove: 0.001 },
+          },
+          pane,
+        );
+        series.setData(segment);
+      }
     }
     chart
       .panes()

@@ -173,6 +173,8 @@ curl -X POST http://localhost:8000/api/backtest \
 
 卖出点研究见 [分段保护退出与完整对照](examples/000938_exit_research/README.md)：保留原买点，量化高点回吐、退出滞后、卖早损失，并展示同业反证。
 
+当前 `strategy/strategy_gpt.py` 使用 [退出 V2：日内峰值保护](examples/000938_exit_v2/README.md)，提供初始风险线、回吐比例保护和利润保留线，并在图表显示保护线。该版优先减少回吐；固定买点实测中总收益低于旧版，完整代价及旧源码一并保留。
+
 针对000938的研究候选见 [波段启动策略与买点评估](examples/000938_swing/README.md)，含可编辑源码、完整买点清单、失败案例和复现脚本。
 
 入门学习见 [Python 策略学习说明](examples/python_strategy_learning/README.md)，附带可直接粘贴的 [18 参数示例函数](examples/python_strategy_learning/strategy.py) 和 [参数文件](examples/python_strategy_learning/parameters.json)，说明输入数据、输出信号、保存位置及本地文件调用方式。

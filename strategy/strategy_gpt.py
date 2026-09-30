@@ -1,4 +1,4 @@
-"""000938 波段启动：原买点 + 上涨后分段保护退出。
+"""000938 波段启动 V2：日内峰值保护，优先控制利润回吐。
 
 目标是定位可能的上涨启动点，不承诺买到最低价，也不要求持有固定天数。
 研究候选：以当日完整日线近似尾盘信号，系统默认按当日收盘价加减滑点尝试成交。
@@ -120,67 +120,167 @@ def _baseline_signals(data, params):
     return pd.DataFrame(rows, columns=["date", "signal", "position_target", "reason"])
 
 
-# 保留原买入日：基准信号仅依赖当日和历史，提前退出后不新增重入信号。
+# 百分比用小数表示。阈值按信号价格计算，不是账户实际成本或保证成交价。
 DEFAULT_PARAMS = {
     **BASE_PARAMS,
-    "profit_arm_atr": 2.0,  # 买入信号价至最高收盘上涨2个信号ATR后激活
-    "profit_trailing_atr": 1.5,  # 激活后跟随距离；不可保证按线价成交
+    "initial_stop_pct": 0.05,  # 入场信号价格下方 5% 的初始风险线
+    "profit_arm_atr": 2.0,
+    "profit_arm_pct": 0.04,  # 上涨 2 个入场 ATR 或 4%，先到者激活
+    "profit_trailing_atr": 1.5,
+    "max_giveback_pct": 0.05,  # 激活后：持仓峰值下方最多 5% 的触发距离
+    "breakeven_arm_pct": 0.06,
+    "breakeven_floor_pct": 0.005,  # 仅为费用缓冲，不保证交易净盈利
+    "profit_lock_arm_pct": 0.10,
+    "profit_keep_ratio": 0.60,  # 上涨达到 10% 后，保留峰值浮盈的 60%
+    "weakness_exit": 0,  # 走弱退出对照明显卖早，默认关闭
+    "peak_reference": 1,  # 1：买入后日内最高价；0：最高收盘，仅供研究对照
 }
 
 
 def generate_signals(data, params):
-    """分段保护卖出，保持基准BUY信号的日期和原因。"""
+    """原买点 + 分阶段保护，输出保护线；仅在收盘触发，不模拟盘中止损成交。"""
     unknown = set(params) - set(DEFAULT_PARAMS)
     if unknown:
-        raise ValueError(f"请删除旧策略参数：{', '.join(sorted(unknown))}")
+        raise ValueError(f"未知策略参数：{', '.join(sorted(unknown))}")
     p = {**DEFAULT_PARAMS, **params}
-    for key in ["profit_arm_atr", "profit_trailing_atr"]:
+    for key, value in p.items():
         if (
-            not isinstance(p[key], (int, float))
-            or not math.isfinite(p[key])
-            or p[key] <= 0
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
         ):
-            raise ValueError(f"{key} 必须是有限正数")
-    if p["profit_trailing_atr"] > p["trailing_atr"]:
-        raise ValueError("保护距离不能超过原始跟随距离")
+            raise ValueError(f"{key} 必须为有限数值")
+    for key in [
+        "initial_stop_pct",
+        "profit_arm_pct",
+        "max_giveback_pct",
+        "breakeven_arm_pct",
+        "profit_lock_arm_pct",
+        "profit_keep_ratio",
+    ]:
+        if not 0 < p[key] < 1:
+            raise ValueError(f"{key} 必须在 0 和 1 之间，百分比用小数表示")
+    if not 0 <= p["breakeven_floor_pct"] < p["breakeven_arm_pct"]:
+        raise ValueError("费用缓冲必须非负且小于保本激活涨幅")
+    if not p["profit_arm_pct"] <= p["breakeven_arm_pct"] <= p["profit_lock_arm_pct"]:
+        raise ValueError("保护、保本、利润保留激活涨幅必须依次递增")
+    if (
+        p["profit_arm_atr"] <= 0
+        or not 0 < p["profit_trailing_atr"] <= p["trailing_atr"]
+    ):
+        raise ValueError("保护 ATR 倍数必须为正，跟随距离不得超过原始距离")
+    if p["weakness_exit"] not in (0, 1):
+        raise ValueError("weakness_exit 只能为 0 或 1")
+    if p["peak_reference"] not in (0, 1):
+        raise ValueError("peak_reference 只能为 0 或 1")
+
     baseline = _baseline_signals(data, {k: p[k] for k in BASE_PARAMS})
-    d = calculate_atr(data.copy().reset_index(drop=True), p["atr_period"])
+    d = calculate_atr(data.copy().reset_index(drop=True), int(p["atr_period"]))
+    fast = ema(d.close, int(p["momentum_ema"]))
+    prior_low = d.low.rolling(2).min().shift(1)
     rows, target = [], 0
-    entry_price = entry_atr = peak_close = protection_line = None
-    armed = False
-    for i, day in enumerate(d["date"]):
-        price, atr = d["close"].iloc[i], d["atr"].iloc[i]
+    entry_price = entry_atr = peak_price = protection_line = None
+    line_source, armed = "", False
+    peak_label = "持仓最高价" if p["peak_reference"] else "最高收盘"
+    for i, day in enumerate(d.date):
+        price, atr = float(d.close.iloc[i]), float(d.atr.iloc[i])
         original = baseline.iloc[i]
         action, reason = (
-            ("HOLD", "保持目标持仓，等待退出")
-            if target
-            else ("NONE", "等待原策略下个买入点")
+            ("HOLD", "趋势持有") if target else ("NONE", "等待原策略下个买点")
         )
+        plotted_line = float("nan")
         if target:
-            peak_close = max(peak_close, price)
-            if peak_close - entry_price >= p["profit_arm_atr"] * entry_atr:
-                armed = True
-            distance = p["profit_trailing_atr"] if armed else p["trailing_atr"]
-            protection_line = max(protection_line, peak_close - distance * atr)
+            # 此时是收盘决策，当日高点已知；买入当日走 BUY 分支，不使用其高点。
+            peak_price = max(
+                peak_price, float(d.high.iloc[i]) if p["peak_reference"] else price
+            )
+            peak_gain = peak_price / entry_price - 1
+            arm_distance = min(
+                p["profit_arm_atr"] * entry_atr, p["profit_arm_pct"] * entry_price
+            )
+            armed = armed or peak_price - entry_price >= arm_distance
+            candidates = [(entry_price * (1 - p["initial_stop_pct"]), "初始风险")]
+            if armed:
+                candidates.extend(
+                    [
+                        (peak_price - p["profit_trailing_atr"] * atr, "ATR 跟随"),
+                        (peak_price * (1 - p["max_giveback_pct"]), "回吐比例"),
+                    ]
+                )
+            if peak_gain >= p["breakeven_arm_pct"]:
+                candidates.append(
+                    (entry_price * (1 + p["breakeven_floor_pct"]), "费用缓冲")
+                )
+            if peak_gain >= p["profit_lock_arm_pct"]:
+                candidates.append(
+                    (
+                        entry_price
+                        + p["profit_keep_ratio"] * (peak_price - entry_price),
+                        "利润保留",
+                    )
+                )
+            next_line, next_source = max(candidates, key=lambda item: item[0])
+            if next_line > protection_line:
+                protection_line, line_source = next_line, next_source
+            plotted_line = protection_line
             exits = []
+            if price <= protection_line:
+                exits.append(
+                    f"{line_source}保护：收盘 {price:.2f} 跌至保护线 {protection_line:.2f} 以下"
+                )
+            if (
+                p["weakness_exit"]
+                and armed
+                and price < fast.iloc[i]
+                and price < prior_low.iloc[i]
+            ):
+                exits.append(
+                    f"短期走弱：收盘低于 EMA{p['momentum_ema']}，并跌破此前两日最低价 {prior_low.iloc[i]:.2f}"
+                )
             if original.signal == "SELL":
                 exits.append(original.reason)
-            if armed and price <= protection_line:
-                exits.append(
-                    f"上涨后收紧保护：收盘跌至信号ATR跟随线 {protection_line:.2f} 以下"
-                )
             if exits:
-                action, target, reason = "SELL", 0, "；".join(exits)
-                entry_price = entry_atr = peak_close = protection_line = None
-                armed = False
+                giveback = 1 - price / peak_price
+                action, target = "SELL", 0
+                reason = (
+                    "；".join(exits)
+                    + f"；{peak_label} {peak_price:.2f}，至收盘回吐 {giveback:.2%}；按撮合价成交"
+                )
+                entry_price = entry_atr = peak_price = protection_line = None
+                line_source, armed = "", False
+            else:
+                reason = f"{'保护已激活' if armed else '初始风控'}，{line_source}保护线 {protection_line:.2f}，{peak_label} {peak_price:.2f}"
         elif original.signal == "BUY":
-            action, target, reason = "BUY", 1, original.reason
-            entry_price, entry_atr, peak_close = price, atr, price
-            protection_line = price - p["trailing_atr"] * atr
-            armed = False
+            action, target = "BUY", 1
+            entry_price, entry_atr, peak_price = price, atr, price
+            protection_line = price * (1 - p["initial_stop_pct"])
+            line_source, armed = "初始风险", False
+            plotted_line = protection_line
+            # 不将买入收盘之前的日内高点当成买后盈利。
+            reason = (
+                original.reason
+                + f"；初始风险线 {protection_line:.2f}（信号价下方 {p['initial_stop_pct']:.1%}）"
+            )
         elif original.position_target == 1:
-            reason = "已提前保护退出，等待原策略本轮结束，不新增追入"
+            reason = "已保护退出，等待原策略本轮结束；本版本仅调整退出"
         rows.append(
-            {"date": day, "signal": action, "position_target": target, "reason": reason}
+            {
+                "date": day,
+                "signal": action,
+                "position_target": target,
+                "reason": reason,
+                "plot_protection": plotted_line,
+            }
         )
-    return pd.DataFrame(rows, columns=["date", "signal", "position_target", "reason"])
+    result = pd.DataFrame(
+        rows, columns=["date", "signal", "position_target", "reason", "plot_protection"]
+    )
+    result.attrs["plots"] = [
+        {
+            "column": "plot_protection",
+            "label": "收盘退出保护线",
+            "pane": "price",
+            "color": "#b36bdb",
+        }
+    ]
+    return result
